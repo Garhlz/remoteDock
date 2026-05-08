@@ -1,0 +1,76 @@
+# RemoteDock
+
+RemoteDock 是一个小型 macOS SwiftUI 应用，用来快速连接个人常用的远程主机。
+
+这个项目目前主要作为 SwiftUI、macOS App 开发、以及日常远程连接工作流的练手项目。
+
+## 当前功能
+
+- 显示固定的 SSH 主机列表。
+- 一键复制 SSH 命令到剪贴板。
+- 打开 Terminal 并启动 SSH 会话。
+- Ping 主机并显示 Online、Offline 或 Checking 状态。
+- 支持 Tailscale IP，也支持任何当前网络可访问的主机地址。
+
+## 项目结构
+
+```text
+remoteDock/
+├── remoteDock.xcodeproj
+├── remoteDock/
+│   ├── remoteDockApp.swift
+│   ├── ContentView.swift
+│   └── Assets.xcassets
+├── README.md
+└── TODO.md
+```
+
+目前大部分代码仍在 `ContentView.swift` 中。对于早期版本这是可以接受的；下一步比较合适的清理工作，是把模型、视图和服务拆到不同文件中。
+
+## 环境要求
+
+- macOS
+- Xcode 26 或更新版本
+- SwiftUI
+- 可选：VS Code 用于编辑代码
+
+## 使用 Xcode 运行
+
+打开项目：
+
+```bash
+open remoteDock.xcodeproj
+```
+
+然后选择 `My Mac`，按 `Cmd + R` 运行。
+
+## 使用命令行构建
+
+```bash
+xcodebuild \
+  -project remoteDock.xcodeproj \
+  -scheme remoteDock \
+  -destination 'platform=macOS' \
+  -derivedDataPath .DerivedData \
+  CODE_SIGNING_ALLOWED=NO \
+  build
+```
+
+运行构建后的 App：
+
+```bash
+open .DerivedData/Build/Products/Debug/remoteDock.app
+```
+
+## macOS 权限说明
+
+RemoteDock 在启动 SSH 会话时，会通过 Apple Events 控制 Terminal。第一次点击 `Open SSH` 时，macOS 可能会询问是否允许 RemoteDock 控制 Terminal。
+
+如果需要手动修改权限，可以前往：
+
+```text
+System Settings > Privacy & Security > Automation
+```
+
+由于这个本地工具会启动 `ping` 等系统命令，当前项目关闭了 App Sandbox。
+
