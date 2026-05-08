@@ -1,19 +1,12 @@
-//
-//  HostStore.swift
-//  remoteDock
-//
-//  Created by Elaine on 2026/5/8.
-//
-
 import Foundation
 
-enum HostStoreError: LocalizedError {
+public enum HostStoreError: LocalizedError {
     case applicationSupportUnavailable
     case readFailed(URL, Error)
     case writeFailed(URL, Error)
     case decodeFailed(URL, Error)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .applicationSupportUnavailable:
             "无法找到 Application Support 目录。"
@@ -27,8 +20,8 @@ enum HostStoreError: LocalizedError {
     }
 }
 
-enum HostStore {
-    static let defaultHosts = [
+public enum HostStore {
+    public static let defaultHosts = [
         RemoteHost(
             name: "Arch T480s",
             username: "elaine",
@@ -44,7 +37,7 @@ enum HostStore {
         )
     ]
 
-    static var configFileURL: URL {
+    public static var configFileURL: URL {
         get throws {
             guard let applicationSupportURL = FileManager.default.urls(
                 for: .applicationSupportDirectory,
@@ -59,7 +52,7 @@ enum HostStore {
         }
     }
 
-    static func loadOrCreateDefaults() throws -> [RemoteHost] {
+    public static func loadOrCreateDefaults() throws -> [RemoteHost] {
         let url = try configFileURL
 
         guard FileManager.default.fileExists(atPath: url.path) else {
@@ -84,7 +77,7 @@ enum HostStore {
         }
     }
 
-    static func save(_ hosts: [RemoteHost]) throws {
+    public static func save(_ hosts: [RemoteHost]) throws {
         let url = try configFileURL
         let directoryURL = url.deletingLastPathComponent()
 

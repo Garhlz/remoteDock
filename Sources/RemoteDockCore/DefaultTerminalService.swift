@@ -1,15 +1,14 @@
-//
-//  DefaultTerminalService.swift
-//  remoteDock
-//
-//  Created by Elaine on 2026/5/8.
-//
-
 import Foundation
 
-enum DefaultTerminalService {
-    static func openSSHSession(for host: RemoteHost) -> String? {
-        guard let url = URL(string: "ssh://\(host.sshTarget)") else {
+public enum DefaultTerminalService {
+    public static func openSSHSession(for host: RemoteHost) -> String? {
+        var components = URLComponents()
+        components.scheme = "ssh"
+        components.user = host.username
+        components.host = host.address
+        components.port = host.port
+
+        guard let url = components.url else {
             return "Unable to build the SSH URL for the default terminal."
         }
 

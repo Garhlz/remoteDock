@@ -6,12 +6,24 @@
 //
 
 import SwiftUI
+import RemoteDockCore
 
 struct ContentView: View {
+    private enum HostFilter: String, CaseIterable, Identifiable {
+        case all = "All"
+        case online = "Online"
+        case offline = "Offline"
+        case unchecked = "Unchecked"
+
+        var id: String { rawValue }
+    }
+
     @State private var hosts: [RemoteHost] = []
     @State private var selectedHostID: UUID?
     @State private var searchText: String = ""
+    @State private var selectedFilter: HostFilter = .all
     @State private var statuses: [UUID: HostStatus] = [:]
+    @State private var lastCheckedAt: [UUID: Date] = [:]
     @State private var copiedFeedback: [UUID: String] = [:]
     @State private var errorMessage: String?
     @State private var configPath: String = ""
@@ -41,6 +53,12 @@ struct ContentView: View {
         .frame(minWidth: 920, minHeight: 620)
         .task {
             loadHosts()
+        }
+        .onChange(of: searchText) { _, _ in
+            syncSelection()
+        }
+        .onChange(of: selectedFilter) { _, _ in
+            syncSelection()
         }
         .sheet(isPresented: $isAddingHost) {
             HostEditorView(title: "Add Host", host: nil) { host in
@@ -152,16 +170,36 @@ struct ContentView: View {
             .padding(.horizontal, 14)
             .padding(.bottom, 12)
 
+            HStack(spacing: 8) {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+                    .foregroundStyle(.secondary)
+
+                Picker("Status Filter", selection: $selectedFilter) {
+                    ForEach(HostFilter.allCases) { filter in
+                        Text(filter.rawValue).tag(filter)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color.secondary.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal, 14)
+            .padding(.bottom, 12)
+
             Divider()
 
             if filteredHosts.isEmpty {
                 ContentUnavailableView(
-                    searchText.isEmpty ? "No Hosts" : "No Results",
-                    systemImage: searchText.isEmpty ? "server.rack" : "magnifyingglass",
+                    hosts.isEmpty ? "No Hosts" : "No Results",
+                    systemImage: hosts.isEmpty ? "server.rack" : "line.3.horizontal.decrease.circle",
                     description: Text(
-                        searchText.isEmpty
+                        hosts.isEmpty
                         ? "Add your first host to get started."
-                        : "Try a different name, address, username, or path."
+                        : "Try a different name, address, username, path, or status filter."
                     )
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -171,6 +209,7 @@ struct ContentView: View {
                         HostSidebarRow(
                             host: host,
                             status: status(for: host),
+                            lastCheckedAt: lastCheckedAt[host.id],
                             isSelected: selectedHostID == host.id
                         )
                         .tag(host.id)
@@ -344,14 +383,26 @@ struct ContentView: View {
 
     private var filteredHosts: [RemoteHost] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let statusFilteredHosts = hosts.filter { host in
+            switch selectedFilter {
+            case .all:
+                true
+            case .online:
+                status(for: host) == .online
+            case .offline:
+                status(for: host) == .offline
+            case .unchecked:
+                status(for: host) == .unknown
+            }
+        }
 
         guard !query.isEmpty else {
-            return hosts
+            return statusFilteredHosts
         }
 
         let normalizedQuery = query.lowercased()
 
-        return hosts.filter { host in
+        return statusFilteredHosts.filter { host in
             host.name.lowercased().contains(normalizedQuery) ||
             host.username.lowercased().contains(normalizedQuery) ||
             host.address.lowercased().contains(normalizedQuery) ||
@@ -411,6 +462,7 @@ struct ContentView: View {
 
         hosts.removeAll { $0.id == host.id }
         statuses[host.id] = nil
+        lastCheckedAt[host.id] = nil
         copiedFeedback[host.id] = nil
 
         if selectedHostID == host.id {
@@ -517,7 +569,9 @@ struct ContentView: View {
     @MainActor
     private func ping(_ host: RemoteHost) async {
         statuses[host.id] = .checking
-        statuses[host.id] = await PingService.check(address: host.address) ? .online : .offline
+        let isOnline = await PingService.check(address: host.address)
+        statuses[host.id] = isOnline ? .online : .offline
+        lastCheckedAt[host.id] = Date()
     }
 
     @MainActor
@@ -541,6 +595,7 @@ struct ContentView: View {
 
             for await (hostID, isOnline) in group {
                 statuses[hostID] = isOnline ? .online : .offline
+                lastCheckedAt[hostID] = Date()
             }
         }
 
@@ -641,16 +696,21 @@ struct ContentView: View {
             detailGridRow(
                 leftTitle: "Username",
                 leftValue: host.username,
-                rightTitle: "Address",
-                rightValue: host.address
+                rightTitle: "Endpoint",
+                rightValue: host.port.map { "\(host.address):\($0)" } ?? host.address
             )
 
             detailGridRow(
                 leftTitle: "Remote Directory",
                 leftValue: host.effectiveRemoteDirectory,
-                rightTitle: "VS Code Target",
-                rightValue: host.vscodeRemoteDirectory
+                rightTitle: "Current Status",
+                rightValue: status(for: host).rawValue
             )
+
+            HStack(alignment: .top, spacing: 18) {
+                detailCell(title: "VS Code Target", value: host.vscodeRemoteDirectory)
+                lastCheckedDetailCell(for: host)
+            }
 
             detailRow(title: "Startup Command", value: host.preferredStartupCommand ?? "Default behavior")
         }
@@ -698,6 +758,31 @@ struct ContentView: View {
                 .font(.system(.body, design: .monospaced))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func lastCheckedDetailCell(for host: RemoteHost) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Last Checked")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            if let date = lastCheckedAt[host.id] {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(date, style: .relative)
+                        .font(.system(.body, design: .monospaced))
+
+                    Text(date.formatted(date: .abbreviated, time: .shortened))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .help(date.formatted(date: .complete, time: .standard))
+            } else {
+                Text("Not checked yet")
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -770,6 +855,7 @@ struct ContentView: View {
 private struct HostSidebarRow: View {
     let host: RemoteHost
     let status: HostStatus
+    let lastCheckedAt: Date?
     let isSelected: Bool
 
     var body: some View {
@@ -787,6 +873,22 @@ private struct HostSidebarRow: View {
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+
+                if let lastCheckedAt {
+                    HStack(spacing: 4) {
+                        Text("Checked")
+                        Text(lastCheckedAt, style: .relative)
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .help(lastCheckedAt.formatted(date: .complete, time: .standard))
+                } else {
+                    Text("Not checked yet")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
             }
 
             Spacer(minLength: 8)

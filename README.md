@@ -4,12 +4,18 @@ RemoteDock 是一个小型 macOS SwiftUI 应用，用来快速连接个人常用
 
 这个项目目前主要作为 SwiftUI、macOS App 开发、以及日常远程连接工作流的练手项目。
 
+当前仓库同时包含：
+
+- `remoteDock.xcodeproj`：macOS SwiftUI App 外壳
+- `RemoteDockCore`：通过 Swift Package Manager 管理的纯 Swift 逻辑模块
+
 ## 当前功能
 
 - 显示本地配置的 SSH 主机列表。
 - 一键复制 SSH 命令到剪贴板。
 - 一键复制主机 IP 地址。
 - 一键复制完整主机信息，包含名称、SSH 目标、远程目录和启动命令。
+- 支持为每台主机配置可选端口，适配非默认 SSH 端口。
 - 打开 Ghostty 并启动 SSH 会话；Linux 会使用兼容的 `TERM=xterm-256color`，如果配置了远程目录，会在登录后进入该目录，也支持为每台主机配置自定义启动命令。
 - 使用系统默认 SSH URL 处理器打开默认终端，减少对 Ghostty 的耦合。
 - 打开 VS Code Remote - SSH 并进入主机的默认远程目录。
@@ -25,28 +31,34 @@ RemoteDock 是一个小型 macOS SwiftUI 应用，用来快速连接个人常用
 - 在界面中新增、编辑、删除主机。
 - 调整主机显示顺序，并自动保存到 JSON。
 - 为每台主机配置默认远程目录，供 VS Code Remote 使用。
+- 为每台主机配置可选端口，供 SSH、默认终端和 VS Code Remote 使用。
 - 为每台主机配置可选的启动命令，覆盖默认 SSH 登录后的启动行为。
 - 使用双栏布局：左侧主机列表，右侧详情与操作面板。
-- 左侧支持主机搜索，可按名称、用户名、地址和远程目录过滤。
+- 左侧支持主机搜索和状态筛选，可按名称、用户名、地址、远程目录以及在线状态过滤。
+- 为每台主机显示最近一次检测时间，便于判断状态是否过期。
 - 为状态、操作和特殊标记增加 tooltip，降低图标理解成本。
+- 将主机模型、配置读写、Ping、默认终端和 Tailscale 状态读取抽到 `RemoteDockCore` Swift Package，便于复用和后续测试。
 
 ## 项目结构
 
 ```text
 remoteDock/
+├── Package.swift
+├── Sources/
+│   └── RemoteDockCore/
+│       ├── DefaultTerminalService.swift
+│       ├── HostStore.swift
+│       ├── PingService.swift
+│       ├── RemoteHost.swift
+│       └── TailscaleService.swift
 ├── remoteDock.xcodeproj
 ├── remoteDock/
 │   ├── remoteDockApp.swift
 │   ├── ContentView.swift
 │   ├── Models/
 │   │   ├── HostStatus.swift
-│   │   └── RemoteHost.swift
 │   ├── Services/
 │   │   ├── ClipboardService.swift
-│   │   ├── DefaultTerminalService.swift
-│   │   ├── HostStore.swift
-│   │   ├── PingService.swift
-│   │   ├── TailscaleService.swift
 │   │   ├── TerminalService.swift
 │   │   └── VSCodeService.swift
 │   ├── Views/
@@ -57,7 +69,7 @@ remoteDock/
 └── TODO.md
 ```
 
-`ContentView.swift` 负责主窗口状态、双栏布局和主机选择；模型、服务和主机卡片视图已经拆分到独立文件中。
+`ContentView.swift` 负责主窗口状态、双栏布局和主机选择；`RemoteDockCore` 负责不依赖 SwiftUI / AppKit 的纯逻辑；终端自动化、VS Code 打开和剪贴板等 macOS 集成功能继续留在 App target 中。
 
 ## 当前界面
 
@@ -71,6 +83,8 @@ remoteDock/
 `Open in Ghostty`、`Open in VS Code`、`Open in Default Terminal` 和 `Local Tailscale` 是右侧的主要操作；复制 SSH、复制 IP、复制完整主机信息、Ping 和管理动作作为次级操作保留在同一区域。
 
 其中 `Local Tailscale` 只会在地址看起来属于 Tailscale 网络的主机上显示。这个按钮展示的是本机的 `tailscale status`，用于快速确认当前 Mac 是否已经连上 tailnet，不代表远端主机自身状态。
+
+左侧列表现在还支持按状态筛选 `All / Online / Offline / Unchecked`，并显示每台主机的 `Last checked` 相对时间。
 
 ## 主机配置
 
@@ -92,6 +106,7 @@ RemoteDock 会从本地 JSON 文件加载主机列表。首次启动时，如果
     "address": "100.117.140.113",
     "id": "00000000-0000-0000-0000-000000000001",
     "name": "Arch T480s",
+    "port": 22,
     "remoteDirectory": "/home/elaine",
     "startupCommand": "cd -- {remoteDirectory} && exec zsh -l",
     "username": "elaine"
@@ -101,7 +116,7 @@ RemoteDock 会从本地 JSON 文件加载主机列表。首次启动时，如果
 
 如果 JSON 格式损坏，RemoteDock 会在界面上显示错误，并临时回退到默认主机列表。它不会自动覆盖损坏的配置文件。
 
-主机也可以直接在 App 界面中新增、编辑、删除和排序。保存后会立即写回 `hosts.json`。如果要使用 `Open in VS Code`，请为对应主机填写可访问的远程目录，例如 Linux 的 `/home/elaine/project` 或 Windows 的 `C:/Users/elaine/project`。
+主机也可以直接在 App 界面中新增、编辑、删除和排序。保存后会立即写回 `hosts.json`。如果目标机器使用非默认 SSH 端口，也可以直接填写 `port`。如果要使用 `Open in VS Code`，请为对应主机填写可访问的远程目录，例如 Linux 的 `/home/elaine/project` 或 Windows 的 `C:/Users/elaine/project`。
 
 如果某台主机有特殊 shell 或启动流程，也可以填写 `startupCommand`。这个命令会在 SSH 登录后直接执行，`{remoteDirectory}` 会被替换成当前主机配置中的目录。比如：
 
@@ -185,6 +200,12 @@ xcodebuild \
 
 ```bash
 open .DerivedData/Build/Products/Debug/remoteDock.app
+```
+
+如果只想验证纯逻辑包本身，也可以直接运行：
+
+```bash
+swift build
 ```
 
 ## macOS 权限说明

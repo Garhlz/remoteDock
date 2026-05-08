@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		B9C001012FADD001002F0169 /* RemoteDockCore in Frameworks */ = {isa = PBXBuildFile; productRef = B9C001032FADD001002F0169 /* RemoteDockCore */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		B95FFA162FADC551002F0169 /* remoteDock.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = remoteDock.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B9C001012FADD001002F0169 /* RemoteDockCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +70,7 @@
 			);
 			name = remoteDock;
 			packageProductDependencies = (
+				B9C001032FADD001002F0169 /* RemoteDockCore */,
 			);
 			productName = remoteDock;
 			productReference = B95FFA162FADC551002F0169 /* remoteDock.app */;
@@ -94,6 +100,9 @@
 			);
 			mainGroup = B95FFA0D2FADC551002F0169;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				B9C001022FADD001002F0169 /* XCLocalSwiftPackageReference "." */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B95FFA172FADC551002F0169 /* Products */;
 			projectDirPath = "";
@@ -123,6 +132,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		B9C001022FADD001002F0169 /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
 
 /* Begin XCBuildConfiguration section */
 		B95FFA1F2FADC552002F0169 /* Debug */ = {
@@ -331,6 +347,14 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B9C001032FADD001002F0169 /* RemoteDockCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B9C001022FADD001002F0169 /* XCLocalSwiftPackageReference "." */;
+			productName = RemoteDockCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = B95FFA0E2FADC551002F0169 /* Project object */;
 }

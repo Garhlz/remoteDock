@@ -1,14 +1,7 @@
-//
-//  PingService.swift
-//  remoteDock
-//
-//  Created by Elaine on 2026/5/8.
-//
-
 import Foundation
 
-enum PingService {
-    static func check(address: String) async -> Bool {
+public enum PingService {
+    public static func check(address: String) async -> Bool {
         await Task.detached(priority: .userInitiated) {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/sbin/ping")

@@ -20,8 +20,9 @@
 - [x] 为 Tailscale 主机增加本机 `tailscale status` 查看操作。
 - [x] 增加复制完整主机信息的操作。
 - [x] 支持启动时自动 Ping 一次所有主机。
-- [ ] 为每台主机显示 `Last checked` 时间。
-- [ ] 为左侧列表增加状态筛选，例如 `All / Online / Offline / Unchecked`。
+- [x] 为每台主机显示 `Last checked` 时间。
+- [x] 为左侧列表增加状态筛选，例如 `All / Online / Offline / Unchecked`。
+- [x] 为每台主机增加可选 SSH 端口。
 - [ ] 为错误提示和复制反馈增加更明确的短暂提示样式。
 
 ## 第二阶段：终端与连接策略
@@ -38,7 +39,7 @@
 ## 第三阶段：架构与测试
 
 - [x] 修正 `Ping All` 的进行中状态判断，避免首个主机返回后按钮重新可点，导致重复并发检测。
-- [ ] 把纯 Swift 逻辑抽成 `RemoteDockCore` Swift Package。
+- [x] 把纯 Swift 逻辑抽成 `RemoteDockCore` Swift Package。
 - [ ] 为 SSH 命令生成增加单元测试。
 - [ ] 为 JSON 配置读写增加单元测试。
 - [ ] 为 Tailscale 状态读取增加可替换执行层，便于测试、路径探测和错误注入。
@@ -97,10 +98,12 @@
 - [x] 为 Tailscale 主机增加本机 Tailscale 状态查看与复制操作。
 - [x] 增加复制完整主机信息的操作。
 - [x] 支持启动后自动执行一次全量 Ping。
+- [x] 将主机模型、配置读写和部分系统命令调用抽到 `RemoteDockCore` Swift Package。
+- [x] 为 SSH、默认终端和 VS Code Remote 增加可选端口支持。
 
 ## 备注
 
 - Xcode 项目继续作为 macOS App 外壳使用。
-- 先把可复用、可测试的逻辑拆到独立 Swift 文件中；当逻辑变多后，再考虑 Swift Package。
+- `RemoteDockCore` 现在承载纯 Swift 逻辑；后续优先为它补测试，而不是继续把逻辑堆回 App target。
 - 在手动工作流足够稳定之前，暂时不要急着增加配置同步、自动发现或后台常驻功能。
 - Windows 远程 shell 当前建议通过本机 wrapper 脚本启动，并避免在远程专用 profile 中直接初始化依赖 Scoop shim 的 `starship` / `zoxide`。

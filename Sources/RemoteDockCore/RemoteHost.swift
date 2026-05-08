@@ -1,25 +1,20 @@
-//
-//  RemoteHost.swift
-//  remoteDock
-//
-//  Created by Elaine on 2026/5/8.
-//
-
 import Foundation
 
-struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
-    let id: UUID
-    let name: String
-    let username: String
-    let address: String
-    let remoteDirectory: String?
-    let startupCommand: String?
+public struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
+    public let id: UUID
+    public let name: String
+    public let username: String
+    public let address: String
+    public let port: Int?
+    public let remoteDirectory: String?
+    public let startupCommand: String?
 
-    init(
+    public init(
         id: UUID = UUID(),
         name: String,
         username: String,
         address: String,
+        port: Int? = nil,
         remoteDirectory: String? = nil,
         startupCommand: String? = nil
     ) {
@@ -27,31 +22,49 @@ struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
         self.name = name
         self.username = username
         self.address = address
+        self.port = Self.normalizedPort(port)
         self.remoteDirectory = Self.normalizedRemoteDirectory(remoteDirectory)
         self.startupCommand = Self.normalizedStartupCommand(startupCommand)
     }
 
-    var sshCommand: String {
-        "ssh \(sshTarget)"
+    public var sshCommand: String {
+        if let port {
+            return "ssh -p \(port) \(sshTarget)"
+        }
+
+        return "ssh \(sshTarget)"
     }
 
-    var displayAddress: String {
-        sshTarget
+    public var displayAddress: String {
+        if let port {
+            return "\(sshTarget):\(port)"
+        }
+
+        return sshTarget
     }
 
-    var sshTarget: String {
+    public var sshTarget: String {
         "\(username)@\(address)"
     }
 
-    var usesTailscale: Bool {
+    public var sshAuthority: String {
+        if let port {
+            return "\(sshTarget):\(port)"
+        }
+
+        return sshTarget
+    }
+
+    public var usesTailscale: Bool {
         Self.looksLikeTailscaleAddress(address)
     }
 
-    var fullDetailsText: String {
+    public var fullDetailsText: String {
         [
             "Name: \(name)",
             "Username: \(username)",
             "Address: \(address)",
+            "Port: \(port.map(String.init) ?? "Default")",
             "SSH Target: \(sshTarget)",
             "Remote Directory: \(effectiveRemoteDirectory)",
             "Startup Command: \(preferredStartupCommand ?? "Default behavior")"
@@ -59,27 +72,27 @@ struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
         .joined(separator: "\n")
     }
 
-    var preferredRemoteDirectory: String? {
+    public var preferredRemoteDirectory: String? {
         Self.normalizedRemoteDirectory(remoteDirectory)
     }
 
-    var preferredStartupCommand: String? {
+    public var preferredStartupCommand: String? {
         Self.normalizedStartupCommand(startupCommand)
     }
 
-    var effectiveRemoteDirectory: String {
+    public var effectiveRemoteDirectory: String {
         preferredRemoteDirectory ?? suggestedRemoteDirectory
     }
 
-    var vscodeRemoteDirectory: String {
+    public var vscodeRemoteDirectory: String {
         effectiveRemoteDirectory
     }
 
-    var isWindowsHost: Bool {
+    public var isWindowsHost: Bool {
         Self.looksLikeWindowsPath(effectiveRemoteDirectory) || Self.looksLikeWindowsName(name)
     }
 
-    var suggestedRemoteDirectory: String {
+    public var suggestedRemoteDirectory: String {
         let lowercasedName = name.lowercased()
 
         if lowercasedName.contains("windows") || lowercasedName.contains("win") {
@@ -93,7 +106,7 @@ struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
         return "/home/\(username)"
     }
 
-    var suggestedStartupCommand: String? {
+    public var suggestedStartupCommand: String? {
         guard isWindowsHost else {
             return nil
         }
@@ -101,26 +114,36 @@ struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
         return #"call "%USERPROFILE%\bin\remote.cmd" "{remoteDirectory}""#
     }
 
-    func withRemoteDirectory(_ remoteDirectory: String?) -> RemoteHost {
+    public func withRemoteDirectory(_ remoteDirectory: String?) -> RemoteHost {
         RemoteHost(
             id: id,
             name: name,
             username: username,
             address: address,
+            port: port,
             remoteDirectory: remoteDirectory,
             startupCommand: startupCommand
         )
     }
 
-    func withStartupCommand(_ startupCommand: String?) -> RemoteHost {
+    public func withStartupCommand(_ startupCommand: String?) -> RemoteHost {
         RemoteHost(
             id: id,
             name: name,
             username: username,
             address: address,
+            port: port,
             remoteDirectory: remoteDirectory,
             startupCommand: startupCommand
         )
+    }
+
+    private static func normalizedPort(_ value: Int?) -> Int? {
+        guard let value, (1 ... 65535).contains(value) else {
+            return nil
+        }
+
+        return value
     }
 
     private static func normalizedRemoteDirectory(_ value: String?) -> String? {
@@ -165,11 +188,11 @@ struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
         guard components.count == 4,
               let firstOctet = Int(components[0]),
               let secondOctet = Int(components[1]),
-              (0...255).contains(firstOctet),
-              (0...255).contains(secondOctet) else {
+              (0 ... 255).contains(firstOctet),
+              (0 ... 255).contains(secondOctet) else {
             return false
         }
 
-        return firstOctet == 100 && (64...127).contains(secondOctet)
+        return firstOctet == 100 && (64 ... 127).contains(secondOctet)
     }
 }

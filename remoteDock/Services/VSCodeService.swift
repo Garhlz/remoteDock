@@ -7,6 +7,7 @@
 
 import AppKit
 import Foundation
+import RemoteDockCore
 
 enum VSCodeService {
     static func openRemoteFolder(for host: RemoteHost) -> String? {
@@ -21,7 +22,7 @@ enum VSCodeService {
         process.arguments = [
             "--new-window",
             "--remote",
-            "ssh-remote+\(host.sshTarget)",
+            "ssh-remote+\(host.sshAuthority)",
             host.vscodeRemoteDirectory
         ]
         process.standardOutput = outputPipe

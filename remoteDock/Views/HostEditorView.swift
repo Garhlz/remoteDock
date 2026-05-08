@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import RemoteDockCore
 
 struct HostEditorView: View {
     let title: String
@@ -16,6 +17,7 @@ struct HostEditorView: View {
     @State private var name: String
     @State private var username: String
     @State private var address: String
+    @State private var port: String
     @State private var remoteDirectory: String
     @State private var startupCommand: String
     @State private var validationMessage: String?
@@ -29,6 +31,7 @@ struct HostEditorView: View {
         _name = State(initialValue: host?.name ?? "")
         _username = State(initialValue: host?.username ?? "")
         _address = State(initialValue: host?.address ?? "")
+        _port = State(initialValue: host?.port.map(String.init) ?? "")
         _remoteDirectory = State(initialValue: host?.remoteDirectory ?? "")
         _startupCommand = State(initialValue: host?.startupCommand ?? "")
     }
@@ -42,6 +45,7 @@ struct HostEditorView: View {
                 TextField("Name", text: $name)
                 TextField("Username", text: $username)
                 TextField("Address", text: $address)
+                TextField("Port", text: $port, prompt: Text("22"))
                 TextField("Remote Directory", text: $remoteDirectory, prompt: Text("/home/elaine"))
                 TextField("Startup Command", text: $startupCommand, prompt: Text(startupCommandPlaceholder))
             }
@@ -80,6 +84,7 @@ struct HostEditorView: View {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedUsername = username.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedAddress = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedPort = port.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedRemoteDirectory = remoteDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedStartupCommand = startupCommand.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -103,6 +108,11 @@ struct HostEditorView: View {
             return
         }
 
+        guard isValidPort(trimmedPort) else {
+            validationMessage = "Port must be empty or a number between 1 and 65535."
+            return
+        }
+
         guard isValidStartupCommand(trimmedStartupCommand) else {
             validationMessage = "Startup command cannot contain line breaks."
             return
@@ -113,6 +123,7 @@ struct HostEditorView: View {
             name: trimmedName,
             username: trimmedUsername,
             address: trimmedAddress,
+            port: parsedPort(from: trimmedPort),
             remoteDirectory: trimmedRemoteDirectory,
             startupCommand: trimmedStartupCommand
         )
@@ -127,6 +138,22 @@ struct HostEditorView: View {
 
     private func isValidRemoteDirectory(_ value: String) -> Bool {
         !value.contains(where: \.isNewline)
+    }
+
+    private func isValidPort(_ value: String) -> Bool {
+        value.isEmpty || parsedPort(from: value) != nil
+    }
+
+    private func parsedPort(from value: String) -> Int? {
+        guard !value.isEmpty else {
+            return nil
+        }
+
+        guard let port = Int(value), (1 ... 65535).contains(port) else {
+            return nil
+        }
+
+        return port
     }
 
     private func isValidStartupCommand(_ value: String) -> Bool {

@@ -7,6 +7,7 @@
 
 import AppKit
 import Foundation
+import RemoteDockCore
 
 enum TerminalService {
     private static let ghosttyBundleIdentifier = "com.mitchellh.ghostty"
@@ -95,12 +96,14 @@ enum TerminalService {
 
     private static func sshCommand(for host: RemoteHost) -> String {
         let sshPrefix = "TERM=xterm-256color /usr/bin/ssh"
+        let sshTarget = host.sshTarget
+        let portArgument = host.port.map { "-p \($0) " } ?? ""
 
         guard let remoteCommand = remoteCommand(for: host) else {
-            return "\(sshPrefix) \(host.sshTarget)"
+            return "\(sshPrefix) \(portArgument)\(sshTarget)"
         }
 
-        return "\(sshPrefix) -t \(host.sshTarget) \(singleQuotedForShell(remoteCommand))"
+        return "\(sshPrefix) \(portArgument)-t \(sshTarget) \(singleQuotedForShell(remoteCommand))"
     }
 
     private static func remoteCommand(for host: RemoteHost) -> String? {

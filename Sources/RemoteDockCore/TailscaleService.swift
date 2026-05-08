@@ -1,19 +1,12 @@
-//
-//  TailscaleService.swift
-//  remoteDock
-//
-//  Created by Elaine on 2026/5/8.
-//
-
 import Foundation
 
-enum TailscaleService {
-    enum StatusResult {
+public enum TailscaleService {
+    public enum StatusResult {
         case success(String)
         case failure(String)
     }
 
-    static func status() -> StatusResult {
+    public static func status() -> StatusResult {
         guard let executablePath = executablePath() else {
             return .failure("Tailscale CLI not found. Install the Tailscale app or expose the `tailscale` command in your PATH.")
         }
