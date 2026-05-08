@@ -17,8 +17,8 @@
 
 ## 下一步：远程工作流动作
 
-- [ ] 增加 VS Code Remote 命令支持。
-- [ ] 为每台主机增加可配置的默认远程目录。
+- [x] 增加 VS Code Remote 命令支持。
+- [x] 为每台主机增加可配置的默认远程目录。
 - [ ] 增加 Tailscale 状态查看操作。
 - [ ] 增加复制完整主机信息的操作。
 - [ ] 为 Windows 主机增加可选的 RDP 或文件共享快捷入口。
@@ -30,6 +30,7 @@
 - [ ] 增加 Automation 权限失败时的提示文案。
 - [ ] 评估是否要把 `Copy SSH` 作为主按钮，把 `Open SSH` 改成次级动作。
 - [ ] 评估是否需要增加“默认终端”打开方式，减少对 Ghostty 的耦合。
+- [ ] 评估是否要为 Windows 主机增加专门的“远程 profile / wrapper”说明入口，减少手动配置成本。
 
 ## 第三阶段：状态与体验
 
@@ -83,9 +84,15 @@
 - [x] 为地址输入增加基础校验，避免空地址或明显错误的 SSH 命令。
 - [x] 保存编辑结果到 `hosts.json`。
 - [x] 使用 Ghostty AppleScript 自动化打开 SSH，会话稳定可用。
+- [x] 为每台主机增加可选的 `startupCommand` 配置。
+- [x] 增加 VS Code Remote 入口，并支持默认远程目录。
+- [x] 为旧配置自动迁移默认远程目录。
+- [x] 为 Windows 主机默认建议 `call "%USERPROFILE%\\bin\\remote.cmd" "{remoteDirectory}"` 的 wrapper 方案。
+- [x] 文档化 Windows 远程专用 `pwsh` / `RemoteDockProfile.ps1` 方案。
 
 ## 备注
 
 - Xcode 项目继续作为 macOS App 外壳使用。
 - 先把可复用、可测试的逻辑拆到独立 Swift 文件中；当逻辑变多后，再考虑 Swift Package。
 - 在手动工作流足够稳定之前，暂时不要急着增加配置同步、自动发现或后台常驻功能。
+- Windows 远程 shell 当前建议通过本机 wrapper 脚本启动，并避免在远程专用 profile 中直接初始化依赖 Scoop shim 的 `starship` / `zoxide`。

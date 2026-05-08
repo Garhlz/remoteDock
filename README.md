@@ -9,7 +9,8 @@ RemoteDock 是一个小型 macOS SwiftUI 应用，用来快速连接个人常用
 - 显示本地配置的 SSH 主机列表。
 - 一键复制 SSH 命令到剪贴板。
 - 一键复制主机 IP 地址。
-- 打开 Ghostty 并启动 SSH 会话。
+- 打开 Ghostty 并启动 SSH 会话；Linux 会使用兼容的 `TERM=xterm-256color`，如果配置了远程目录，会在登录后进入该目录，也支持为每台主机配置自定义启动命令。
+- 打开 VS Code Remote - SSH 并进入主机的默认远程目录。
 - Ping 主机并显示 Online、Offline 或 Checking 状态。
 - 一键 Ping 所有主机。
 - 当打开 SSH 失败时，在界面上显示错误信息。
@@ -19,6 +20,8 @@ RemoteDock 是一个小型 macOS SwiftUI 应用，用来快速连接个人常用
 - 在窗口底部显示配置文件路径，并支持复制路径。
 - 在界面中新增、编辑、删除主机。
 - 调整主机显示顺序，并自动保存到 JSON。
+- 为每台主机配置默认远程目录，供 VS Code Remote 使用。
+- 为每台主机配置可选的启动命令，覆盖默认 SSH 登录后的启动行为。
 
 ## 项目结构
 
@@ -35,7 +38,8 @@ remoteDock/
 │   │   ├── ClipboardService.swift
 │   │   ├── HostStore.swift
 │   │   ├── PingService.swift
-│   │   └── TerminalService.swift
+│   │   ├── TerminalService.swift
+│   │   └── VSCodeService.swift
 │   ├── Views/
 │   │   ├── HostCard.swift
 │   │   └── HostEditorView.swift
@@ -66,6 +70,8 @@ RemoteDock 会从本地 JSON 文件加载主机列表。首次启动时，如果
     "address": "100.117.140.113",
     "id": "00000000-0000-0000-0000-000000000001",
     "name": "Arch T480s",
+    "remoteDirectory": "/home/elaine",
+    "startupCommand": "cd -- {remoteDirectory} && exec zsh -l",
     "username": "elaine"
   }
 ]
@@ -73,7 +79,56 @@ RemoteDock 会从本地 JSON 文件加载主机列表。首次启动时，如果
 
 如果 JSON 格式损坏，RemoteDock 会在界面上显示错误，并临时回退到默认主机列表。它不会自动覆盖损坏的配置文件。
 
-主机也可以直接在 App 界面中新增、编辑、删除和排序。保存后会立即写回 `hosts.json`。
+主机也可以直接在 App 界面中新增、编辑、删除和排序。保存后会立即写回 `hosts.json`。如果要使用 `Open in VS Code`，请为对应主机填写可访问的远程目录，例如 Linux 的 `/home/elaine/project` 或 Windows 的 `C:/Users/elaine/project`。
+
+如果某台主机有特殊 shell 或启动流程，也可以填写 `startupCommand`。这个命令会在 SSH 登录后直接执行，`{remoteDirectory}` 会被替换成当前主机配置中的目录。比如：
+
+- Linux: `cd -- {remoteDirectory} && exec zsh -l`
+- Windows: `call "%USERPROFILE%\bin\remote.cmd" "{remoteDirectory}"`
+
+### Windows 主机建议配置
+
+当前更稳定的做法是：不要在 `startupCommand` 中直接拼复杂的 `pwsh` 启动逻辑，而是在 Windows 主机本机放一个 wrapper 脚本，再让 RemoteDock 调它。
+
+推荐把脚本放在：
+
+```text
+%USERPROFILE%\bin\remote.cmd
+```
+
+推荐内容：
+
+```bat
+@echo off
+set "TARGET=%~1"
+if not defined TARGET set "TARGET=%USERPROFILE%"
+cd /d "%TARGET%"
+"C:\Users\Elaine\scoop\apps\pwsh\7.6.0\pwsh.exe" -NoLogo -NoExit -NoProfile -Command ". '%USERPROFILE%\Documents\PowerShell\RemoteDockProfile.ps1'"
+```
+
+对应的 `startupCommand`：
+
+```text
+call "%USERPROFILE%\bin\remote.cmd" "{remoteDirectory}"
+```
+
+之所以推荐这种方式，是因为在 Windows OpenSSH 的远程命令场景里，Scoop 的 `current` junction 和 shim 可执行文件经常不稳定。直接在 wrapper 里写实际版本路径会更可靠。
+
+### Windows 远程专用 PowerShell Profile
+
+如果你希望远程连接时保留 `pwsh` 的常用体验，建议单独维护：
+
+```text
+%USERPROFILE%\Documents\PowerShell\RemoteDockProfile.ps1
+```
+
+RemoteDock 当前验证通过的方案是：
+
+- `remote.cmd` 使用 `-NoProfile`
+- 再手动加载 `RemoteDockProfile.ps1`
+- 暂时不要在这份远程专用 profile 里初始化依赖 Scoop shim 的 `starship` / `zoxide`
+
+这是因为它们在远程启动链路里仍可能通过 `current` shim 间接启动，导致初始化失败。
 
 ## 环境要求
 

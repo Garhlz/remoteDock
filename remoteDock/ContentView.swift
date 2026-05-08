@@ -44,6 +44,9 @@ struct ContentView: View {
                         openSSH: {
                             openSSHSession(for: host)
                         },
+                        openVSCodeRemote: {
+                            openVSCodeRemote(for: host)
+                        },
                         ping: {
                             Task {
                                 await ping(host)
@@ -263,6 +266,13 @@ struct ContentView: View {
     @MainActor
     private func openSSHSession(for host: RemoteHost) {
         if let message = TerminalService.openSSHSession(for: host) {
+            errorMessage = message
+        }
+    }
+
+    @MainActor
+    private func openVSCodeRemote(for host: RemoteHost) {
+        if let message = VSCodeService.openRemoteFolder(for: host) {
             errorMessage = message
         }
     }

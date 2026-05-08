@@ -16,15 +16,21 @@ struct HostEditorView: View {
     @State private var name: String
     @State private var username: String
     @State private var address: String
+    @State private var remoteDirectory: String
+    @State private var startupCommand: String
     @State private var validationMessage: String?
+    private let startupCommandPlaceholder: String
 
     init(title: String, host: RemoteHost?, save: @escaping (RemoteHost) -> Void) {
         self.title = title
         self.originalHost = host
         self.save = save
+        self.startupCommandPlaceholder = host?.suggestedStartupCommand ?? #"call "%USERPROFILE%\bin\remote.cmd" "{remoteDirectory}""#
         _name = State(initialValue: host?.name ?? "")
         _username = State(initialValue: host?.username ?? "")
         _address = State(initialValue: host?.address ?? "")
+        _remoteDirectory = State(initialValue: host?.remoteDirectory ?? "")
+        _startupCommand = State(initialValue: host?.startupCommand ?? "")
     }
 
     var body: some View {
@@ -36,12 +42,22 @@ struct HostEditorView: View {
                 TextField("Name", text: $name)
                 TextField("Username", text: $username)
                 TextField("Address", text: $address)
+                TextField("Remote Directory", text: $remoteDirectory, prompt: Text("/home/elaine"))
+                TextField("Startup Command", text: $startupCommand, prompt: Text(startupCommandPlaceholder))
             }
 
             if let validationMessage {
                 Label(validationMessage, systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.red)
             }
+
+            Text("Remote Directory is used by Open in VS Code and can be left empty for now.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Text("Startup Command is optional. It runs after SSH login, and you can use {remoteDirectory} as a placeholder.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
             HStack {
                 Spacer()
@@ -64,6 +80,8 @@ struct HostEditorView: View {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedUsername = username.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedAddress = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedRemoteDirectory = remoteDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedStartupCommand = startupCommand.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !trimmedName.isEmpty else {
             validationMessage = "Name cannot be empty."
@@ -80,11 +98,23 @@ struct HostEditorView: View {
             return
         }
 
+        guard isValidRemoteDirectory(trimmedRemoteDirectory) else {
+            validationMessage = "Remote directory cannot contain line breaks."
+            return
+        }
+
+        guard isValidStartupCommand(trimmedStartupCommand) else {
+            validationMessage = "Startup command cannot contain line breaks."
+            return
+        }
+
         let host = RemoteHost(
             id: originalHost?.id ?? UUID(),
             name: trimmedName,
             username: trimmedUsername,
-            address: trimmedAddress
+            address: trimmedAddress,
+            remoteDirectory: trimmedRemoteDirectory,
+            startupCommand: trimmedStartupCommand
         )
 
         save(host)
@@ -93,5 +123,13 @@ struct HostEditorView: View {
 
     private func isValidAddress(_ value: String) -> Bool {
         !value.isEmpty && !value.contains(where: { $0.isWhitespace })
+    }
+
+    private func isValidRemoteDirectory(_ value: String) -> Bool {
+        !value.contains(where: \.isNewline)
+    }
+
+    private func isValidStartupCommand(_ value: String) -> Bool {
+        !value.contains(where: \.isNewline)
     }
 }

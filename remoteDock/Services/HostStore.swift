@@ -29,8 +29,19 @@ enum HostStoreError: LocalizedError {
 
 enum HostStore {
     static let defaultHosts = [
-        RemoteHost(name: "Arch T480s", username: "elaine", address: "100.117.140.113"),
-        RemoteHost(name: "Windows Omen16", username: "elaine", address: "100.102.71.37")
+        RemoteHost(
+            name: "Arch T480s",
+            username: "elaine",
+            address: "100.117.140.113",
+            remoteDirectory: "/home/elaine"
+        ),
+        RemoteHost(
+            name: "Windows Omen16",
+            username: "elaine",
+            address: "100.102.71.37",
+            remoteDirectory: "C:/Users/elaine",
+            startupCommand: #"call "%USERPROFILE%\bin\remote.cmd" "{remoteDirectory}""#
+        )
     ]
 
     static var configFileURL: URL {
@@ -58,7 +69,14 @@ enum HostStore {
 
         do {
             let data = try Data(contentsOf: url)
-            return try JSONDecoder().decode([RemoteHost].self, from: data)
+            let hosts = try JSONDecoder().decode([RemoteHost].self, from: data)
+            let normalizedHosts = migrateDefaultsIfNeeded(in: hosts)
+
+            if normalizedHosts != hosts {
+                try save(normalizedHosts)
+            }
+
+            return normalizedHosts
         } catch let error as DecodingError {
             throw HostStoreError.decodeFailed(url, error)
         } catch {
@@ -82,6 +100,23 @@ enum HostStore {
             try data.write(to: url, options: .atomic)
         } catch {
             throw HostStoreError.writeFailed(url, error)
+        }
+    }
+
+    private static func migrateDefaultsIfNeeded(in hosts: [RemoteHost]) -> [RemoteHost] {
+        hosts.map { host in
+            let hostWithDirectory = if host.preferredRemoteDirectory == nil {
+                host.withRemoteDirectory(host.suggestedRemoteDirectory)
+            } else {
+                host
+            }
+
+            guard hostWithDirectory.preferredStartupCommand == nil,
+                  let suggestedStartupCommand = hostWithDirectory.suggestedStartupCommand else {
+                return hostWithDirectory
+            }
+
+            return hostWithDirectory.withStartupCommand(suggestedStartupCommand)
         }
     }
 }

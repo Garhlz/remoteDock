@@ -44,8 +44,7 @@ enum TerminalService {
     }
 
     private static func appleScriptArguments(for host: RemoteHost) -> [String] {
-        let sshCommand = "/usr/bin/ssh \(host.username)@\(host.address)"
-        let escapedCommand = appleScriptQuoted(sshCommand)
+        let commandSequence = commandSequence(for: host)
         let isGhosttyRunning = !NSRunningApplication
             .runningApplications(withBundleIdentifier: ghosttyBundleIdentifier)
             .isEmpty
@@ -56,11 +55,7 @@ enum TerminalService {
                 "tell application \"Ghostty\" to set win to new window",
                 "-e",
                 "tell application \"Ghostty\" to set term to focused terminal of selected tab of win",
-                "-e",
-                "tell application \"Ghostty\" to input text \(escapedCommand) to term",
-                "-e",
-                "tell application \"Ghostty\" to send key \"enter\" to term"
-            ]
+            ] + commandSequence.appleScriptEvents(forTerminalVariable: "term")
         }
 
         return [
@@ -70,14 +65,118 @@ enum TerminalService {
             "delay 0.2",
             "-e",
             "tell application \"Ghostty\" to set term to focused terminal of selected tab of front window",
-            "-e",
-            "tell application \"Ghostty\" to input text \(escapedCommand) to term",
-            "-e",
-            "tell application \"Ghostty\" to send key \"enter\" to term"
-        ]
+        ] + commandSequence.appleScriptEvents(forTerminalVariable: "term")
+    }
+
+    private static func commandSequence(for host: RemoteHost) -> CommandSequence {
+        if let startupCommand = host.preferredStartupCommand {
+            return CommandSequence(
+                initialCommand: baseSSHCommand(for: host),
+                followUpCommand: resolvedStartupCommand(startupCommand, for: host)
+            )
+        }
+
+        if host.isWindowsHost {
+            return CommandSequence(
+                initialCommand: baseSSHCommand(for: host),
+                followUpCommand: defaultWindowsFollowUpCommand(remoteDirectory: host.preferredRemoteDirectory)
+            )
+        }
+
+        if let remoteDirectory = host.preferredRemoteDirectory {
+            return CommandSequence(
+                initialCommand: baseSSHCommand(for: host),
+                followUpCommand: defaultFollowUpCommand(for: host, remoteDirectory: remoteDirectory)
+            )
+        }
+
+        return CommandSequence(initialCommand: baseSSHCommand(for: host))
+    }
+
+    private static func baseSSHCommand(for host: RemoteHost) -> String {
+        let sshPrefix = "TERM=xterm-256color /usr/bin/ssh"
+
+        return "\(sshPrefix) \(host.sshTarget)"
+    }
+
+    private static func defaultFollowUpCommand(for host: RemoteHost, remoteDirectory: String) -> String {
+        return "cd -- \(singleQuotedForShell(remoteDirectory))"
+    }
+
+    private static func defaultWindowsFollowUpCommand(remoteDirectory: String?) -> String {
+        let pwshArguments: String
+
+        if let remoteDirectory {
+            let normalizedPath = remoteDirectory.replacingOccurrences(of: "/", with: "\\")
+            let escapedPath = normalizedPath.replacingOccurrences(of: "'", with: "''")
+            pwshArguments = "-NoLogo -NoExit -Command \"Set-Location -LiteralPath '\(escapedPath)'\""
+        } else {
+            pwshArguments = "-NoLogo -NoExit"
+        }
+
+        let scoopPwsh = "%USERPROFILE%\\scoop\\apps\\pwsh\\current\\pwsh.exe"
+        let bundledPwsh = "%ProgramFiles%\\PowerShell\\7\\pwsh.exe"
+
+        return """
+        if exist "\(scoopPwsh)" ("\(scoopPwsh)" \(pwshArguments)) else if exist "\(bundledPwsh)" ("\(bundledPwsh)" \(pwshArguments)) else (pwsh.exe \(pwshArguments))
+        """
+    }
+
+    private static func resolvedStartupCommand(_ startupCommand: String, for host: RemoteHost) -> String {
+        startupCommand.replacingOccurrences(of: "{remoteDirectory}", with: host.effectiveRemoteDirectory)
+    }
+
+    private static func singleQuotedForShell(_ value: String) -> String {
+        "'\(value.replacingOccurrences(of: "'", with: "'\"'\"'"))'"
+    }
+
+    private static func doubleQuotedForShell(_ value: String) -> String {
+        let escapedValue = value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "$", with: "\\$")
+            .replacingOccurrences(of: "`", with: "\\`")
+
+        return "\"\(escapedValue)\""
     }
 
     private static func appleScriptQuoted(_ value: String) -> String {
+        "\"\(value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\""
+    }
+}
+
+private struct CommandSequence {
+    let initialCommand: String
+    let followUpCommand: String?
+
+    init(initialCommand: String, followUpCommand: String? = nil) {
+        self.initialCommand = initialCommand
+        self.followUpCommand = followUpCommand
+    }
+
+    func appleScriptEvents(forTerminalVariable terminalVariable: String) -> [String] {
+        var events = [
+            "-e",
+            "tell application \"Ghostty\" to input text \(appleScriptQuoted(initialCommand)) to \(terminalVariable)",
+            "-e",
+            "tell application \"Ghostty\" to send key \"enter\" to \(terminalVariable)"
+        ]
+
+        if let followUpCommand {
+            events.append(contentsOf: [
+                "-e",
+                "delay 1.5",
+                "-e",
+                "tell application \"Ghostty\" to input text \(appleScriptQuoted(followUpCommand)) to \(terminalVariable)",
+                "-e",
+                "tell application \"Ghostty\" to send key \"enter\" to \(terminalVariable)"
+            ])
+        }
+
+        return events
+    }
+
+    private func appleScriptQuoted(_ value: String) -> String {
         "\"\(value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\""
     }
 }

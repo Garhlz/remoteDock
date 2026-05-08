@@ -14,6 +14,7 @@ struct HostCard: View {
     let copySSHCommand: () -> Void
     let copyIPAddress: () -> Void
     let openSSH: () -> Void
+    let openVSCodeRemote: () -> Void
     let ping: () -> Void
     let edit: () -> Void
     let delete: () -> Void
@@ -44,6 +45,10 @@ struct HostCard: View {
                     Label("Open SSH", systemImage: "terminal")
                 }
                 .keyboardShortcut(.defaultAction)
+
+                Button(action: openVSCodeRemote) {
+                    Label("Open in VS Code", systemImage: "chevron.left.forwardslash.chevron.right")
+                }
 
                 Button(action: ping) {
                     Label(status == .checking ? "Checking" : "Ping", systemImage: "network")
