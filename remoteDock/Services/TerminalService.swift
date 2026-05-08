@@ -10,11 +10,38 @@ import Foundation
 import RemoteDockCore
 
 enum TerminalService {
+    enum Error: LocalizedError {
+        case ghosttyNotInstalled
+        case automationPermissionDenied
+        case automationFailed(output: String?, exitCode: Int32)
+        case processError(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .ghosttyNotInstalled:
+                "Ghostty is not installed. Install Ghostty first, or use Copy SSH instead."
+            case .automationPermissionDenied:
+                """
+                RemoteDock is not allowed to control Ghostty yet.
+                Open System Settings > Privacy & Security > Automation, then allow RemoteDock to control Ghostty.
+                """
+            case .automationFailed(let output, let exitCode):
+                if let output, !output.isEmpty {
+                    "Ghostty automation failed: \(output)"
+                } else {
+                    "Ghostty automation failed with exit code \(exitCode)."
+                }
+            case .processError(let description):
+                "Unable to automate Ghostty: \(description)"
+            }
+        }
+    }
+
     private static let ghosttyBundleIdentifier = "com.mitchellh.ghostty"
 
-    static func openSSHSession(for host: RemoteHost) -> String? {
+    static func openSSHSession(for host: RemoteHost) -> Error? {
         guard isGhosttyInstalled else {
-            return "Ghostty is not installed. Install Ghostty first, or use Copy SSH instead."
+            return .ghosttyNotInstalled
         }
 
         let process = Process()
@@ -37,23 +64,16 @@ enum TerminalService {
 
                 if let output {
                     if isAutomationPermissionError(output) {
-                        return """
-                        RemoteDock is not allowed to control Ghostty yet.
-                        Open System Settings > Privacy & Security > Automation, then allow RemoteDock to control Ghostty.
-                        """
-                    }
-
-                    if !output.isEmpty {
-                        return "Ghostty automation failed: \(output)"
+                        return .automationPermissionDenied
                     }
                 }
 
-                return "Ghostty automation failed with exit code \(process.terminationStatus)."
+                return .automationFailed(output: output, exitCode: process.terminationStatus)
             }
 
             return nil
         } catch {
-            return "Unable to automate Ghostty: \(error.localizedDescription)"
+            return .processError(error.localizedDescription)
         }
     }
 
@@ -62,7 +82,7 @@ enum TerminalService {
     }
 
     private static func appleScriptArguments(for host: RemoteHost) -> [String] {
-        let sshCommand = sshCommand(for: host)
+        let sshCommand = SSHCommandBuilder.command(for: host)
         let isGhosttyRunning = !NSRunningApplication
             .runningApplications(withBundleIdentifier: ghosttyBundleIdentifier)
             .isEmpty
@@ -92,65 +112,6 @@ enum TerminalService {
             "-e",
             "tell application \"Ghostty\" to send key \"enter\" to term"
         ]
-    }
-
-    private static func sshCommand(for host: RemoteHost) -> String {
-        let sshPrefix = "TERM=xterm-256color /usr/bin/ssh"
-        let sshTarget = host.sshTarget
-        let portArgument = host.port.map { "-p \($0) " } ?? ""
-
-        guard let remoteCommand = remoteCommand(for: host) else {
-            return "\(sshPrefix) \(portArgument)\(sshTarget)"
-        }
-
-        return "\(sshPrefix) \(portArgument)-t \(sshTarget) \(singleQuotedForShell(remoteCommand))"
-    }
-
-    private static func remoteCommand(for host: RemoteHost) -> String? {
-        if let startupCommand = host.preferredStartupCommand {
-            return resolvedStartupCommand(startupCommand, for: host)
-        }
-
-        if host.isWindowsHost {
-            return defaultWindowsFollowUpCommand(remoteDirectory: host.preferredRemoteDirectory)
-        }
-
-        if let remoteDirectory = host.preferredRemoteDirectory {
-            return defaultFollowUpCommand(remoteDirectory: remoteDirectory)
-        }
-
-        return nil
-    }
-
-    private static func defaultFollowUpCommand(remoteDirectory: String) -> String {
-        "cd -- \(singleQuotedForShell(remoteDirectory)) && exec \"${SHELL:-/bin/sh}\" -l"
-    }
-
-    private static func defaultWindowsFollowUpCommand(remoteDirectory: String?) -> String {
-        let pwshArguments: String
-
-        if let remoteDirectory {
-            let normalizedPath = remoteDirectory.replacingOccurrences(of: "/", with: "\\")
-            let escapedPath = normalizedPath.replacingOccurrences(of: "'", with: "''")
-            pwshArguments = "-NoLogo -NoExit -Command \"Set-Location -LiteralPath '\(escapedPath)'\""
-        } else {
-            pwshArguments = "-NoLogo -NoExit"
-        }
-
-        let scoopPwsh = "%USERPROFILE%\\scoop\\apps\\pwsh\\current\\pwsh.exe"
-        let bundledPwsh = "%ProgramFiles%\\PowerShell\\7\\pwsh.exe"
-
-        return """
-        if exist "\(scoopPwsh)" ("\(scoopPwsh)" \(pwshArguments)) else if exist "\(bundledPwsh)" ("\(bundledPwsh)" \(pwshArguments)) else (pwsh.exe \(pwshArguments))
-        """
-    }
-
-    private static func resolvedStartupCommand(_ startupCommand: String, for host: RemoteHost) -> String {
-        startupCommand.replacingOccurrences(of: "{remoteDirectory}", with: host.effectiveRemoteDirectory)
-    }
-
-    private static func singleQuotedForShell(_ value: String) -> String {
-        "'\(value.replacingOccurrences(of: "'", with: "'\"'\"'"))'"
     }
 
     private static func appleScriptQuoted(_ value: String) -> String {

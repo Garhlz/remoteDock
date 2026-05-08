@@ -18,6 +18,44 @@ struct ContentView: View {
         var id: String { rawValue }
     }
 
+    private struct FeedbackMessage: Identifiable, Equatable {
+        enum Kind: Equatable {
+            case success
+            case error
+
+            var title: String {
+                switch self {
+                case .success:
+                    "Done"
+                case .error:
+                    "Action failed"
+                }
+            }
+
+            var systemImage: String {
+                switch self {
+                case .success:
+                    "checkmark.circle.fill"
+                case .error:
+                    "exclamationmark.triangle.fill"
+                }
+            }
+
+            var tint: Color {
+                switch self {
+                case .success:
+                    .green
+                case .error:
+                    .red
+                }
+            }
+        }
+
+        let id = UUID()
+        let kind: Kind
+        let message: String
+    }
+
     @State private var hosts: [RemoteHost] = []
     @State private var selectedHostID: UUID?
     @State private var searchText: String = ""
@@ -25,7 +63,7 @@ struct ContentView: View {
     @State private var statuses: [UUID: HostStatus] = [:]
     @State private var lastCheckedAt: [UUID: Date] = [:]
     @State private var copiedFeedback: [UUID: String] = [:]
-    @State private var errorMessage: String?
+    @State private var feedbackMessage: FeedbackMessage?
     @State private var configPath: String = ""
     @State private var didCopyConfigPath = false
     @State private var hostBeingEdited: RemoteHost?
@@ -37,6 +75,9 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 14) {
             topBar
+            if let feedbackMessage {
+                feedbackBanner(for: feedbackMessage)
+            }
 
             HSplitView {
                 sidebar
@@ -72,13 +113,6 @@ struct ContentView: View {
         }
         .sheet(isPresented: isShowingTailscaleStatus) {
             tailscaleStatusSheet
-        }
-        .alert("操作失败", isPresented: hasErrorMessage) {
-            Button("OK", role: .cancel) {
-                errorMessage = nil
-            }
-        } message: {
-            Text(errorMessage ?? "")
         }
     }
 
@@ -343,17 +377,6 @@ struct ContentView: View {
         }
     }
 
-    private var hasErrorMessage: Binding<Bool> {
-        Binding(
-            get: { errorMessage != nil },
-            set: { isPresented in
-                if !isPresented {
-                    errorMessage = nil
-                }
-            }
-        )
-    }
-
     private var isShowingTailscaleStatus: Binding<Bool> {
         Binding(
             get: { tailscaleStatusText != nil },
@@ -424,7 +447,7 @@ struct ContentView: View {
             }
 
             syncSelection()
-            errorMessage = error.localizedDescription
+            showFeedback(.error, error.localizedDescription)
         }
 
         if !didRunInitialPing && !hosts.isEmpty {
@@ -498,7 +521,7 @@ struct ContentView: View {
             configPath = try HostStore.configFileURL.path
             syncSelection()
         } catch {
-            errorMessage = error.localizedDescription
+            showFeedback(.error, error.localizedDescription)
         }
     }
 
@@ -506,6 +529,7 @@ struct ContentView: View {
     private func copy(_ text: String, label: String, for host: RemoteHost) {
         ClipboardService.copy(text)
         copiedFeedback[host.id] = label
+        showFeedback(.success, copiedMessage(for: label, host: host))
 
         Task {
             try? await Task.sleep(nanoseconds: 1_200_000_000)
@@ -523,6 +547,7 @@ struct ContentView: View {
 
         ClipboardService.copy(configPath)
         didCopyConfigPath = true
+        showFeedback(.success, "Config file path copied.")
 
         Task {
             try? await Task.sleep(nanoseconds: 1_200_000_000)
@@ -532,37 +557,37 @@ struct ContentView: View {
 
     @MainActor
     private func openSSHSession(for host: RemoteHost) {
-        if let message = TerminalService.openSSHSession(for: host) {
-            errorMessage = message
+        if let error = TerminalService.openSSHSession(for: host) {
+            showFeedback(.error, error.localizedDescription)
         }
     }
 
     @MainActor
     private func openDefaultTerminalSession(for host: RemoteHost) {
-        if let message = DefaultTerminalService.openSSHSession(for: host) {
-            errorMessage = message
+        if let error = DefaultTerminalService.openSSHSession(for: host) {
+            showFeedback(.error, error.localizedDescription)
         }
     }
 
     @MainActor
     private func openVSCodeRemote(for host: RemoteHost) {
-        if let message = VSCodeService.openRemoteFolder(for: host) {
-            errorMessage = message
+        if let error = VSCodeService.openRemoteFolder(for: host) {
+            showFeedback(.error, error.localizedDescription)
         }
     }
 
     @MainActor
     private func showTailscaleStatus(for host: RemoteHost) {
         guard host.usesTailscale else {
-            errorMessage = "This host does not look like a Tailscale address."
+            showFeedback(.error, "This host does not look like a Tailscale address.")
             return
         }
 
         switch TailscaleService.status() {
         case .success(let statusText):
             tailscaleStatusText = statusText
-        case .failure(let message):
-            errorMessage = message
+        case .failure(let error):
+            showFeedback(.error, error.localizedDescription)
         }
     }
 
@@ -811,6 +836,70 @@ struct ContentView: View {
         }
     }
 
+    @MainActor
+    private func showFeedback(_ kind: FeedbackMessage.Kind, _ message: String) {
+        let feedback = FeedbackMessage(kind: kind, message: message)
+        feedbackMessage = feedback
+
+        Task {
+            try? await Task.sleep(nanoseconds: kind == .error ? 4_000_000_000 : 2_000_000_000)
+            if feedbackMessage?.id == feedback.id {
+                feedbackMessage = nil
+            }
+        }
+    }
+
+    private func copiedMessage(for label: String, host: RemoteHost) -> String {
+        switch label {
+        case "SSH":
+            "SSH command copied for \(host.name)."
+        case "IP":
+            "Address copied for \(host.name)."
+        case "Host":
+            "Full host details copied for \(host.name)."
+        default:
+            "\(label) copied for \(host.name)."
+        }
+    }
+
+    private func feedbackBanner(for feedback: FeedbackMessage) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: feedback.kind.systemImage)
+                .font(.headline)
+                .foregroundStyle(feedback.kind.tint)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(feedback.kind.title)
+                    .font(.subheadline.weight(.semibold))
+
+                Text(feedback.message)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+
+            Spacer(minLength: 12)
+
+            Button {
+                feedbackMessage = nil
+            } label: {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(feedback.kind.tint.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(feedback.kind.tint.opacity(0.28))
+        }
+        .transition(.move(edge: .top).combined(with: .opacity))
+        .animation(.easeInOut(duration: 0.18), value: feedback.id)
+    }
+
     private var tailscaleStatusSheet: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
@@ -843,6 +932,7 @@ struct ContentView: View {
                     }
 
                     ClipboardService.copy(tailscaleStatusText)
+                    showFeedback(.success, "Local Tailscale status copied.")
                 }
                 .buttonStyle(.bordered)
             }

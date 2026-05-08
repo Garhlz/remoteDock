@@ -10,9 +10,30 @@ import Foundation
 import RemoteDockCore
 
 enum VSCodeService {
-    static func openRemoteFolder(for host: RemoteHost) -> String? {
+    enum Error: LocalizedError {
+        case notInstalled
+        case launchFailed(output: String?)
+        case processError(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .notInstalled:
+                "Visual Studio Code is not installed."
+            case .launchFailed(let output):
+                if let output, !output.isEmpty {
+                    "Unable to launch Visual Studio Code: \(output)"
+                } else {
+                    "Unable to launch Visual Studio Code."
+                }
+            case .processError(let description):
+                "Unable to launch Visual Studio Code: \(description)"
+            }
+        }
+    }
+
+    static func openRemoteFolder(for host: RemoteHost) -> Error? {
         guard let cli = availableCLI else {
-            return "Visual Studio Code is not installed."
+            return .notInstalled
         }
 
         let process = Process()
@@ -38,16 +59,12 @@ enum VSCodeService {
                     encoding: .utf8
                 )?.trimmingCharacters(in: .whitespacesAndNewlines)
 
-                if let output, !output.isEmpty {
-                    return "Unable to launch Visual Studio Code: \(output)"
-                }
-
-                return "Unable to launch Visual Studio Code."
+                return .launchFailed(output: output)
             }
 
             return nil
         } catch {
-            return "Unable to launch Visual Studio Code: \(error.localizedDescription)"
+            return .processError(error.localizedDescription)
         }
     }
 

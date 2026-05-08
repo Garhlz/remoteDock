@@ -16,6 +16,10 @@ let package = Package(
     targets: [
         .target(
             name: "RemoteDockCore"
+        ),
+        .testTarget(
+            name: "RemoteDockCoreTests",
+            dependencies: ["RemoteDockCore"]
         )
     ]
 )

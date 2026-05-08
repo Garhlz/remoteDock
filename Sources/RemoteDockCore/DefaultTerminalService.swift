@@ -1,15 +1,30 @@
 import Foundation
 
 public enum DefaultTerminalService {
-    public static func openSSHSession(for host: RemoteHost) -> String? {
-        var components = URLComponents()
-        components.scheme = "ssh"
-        components.user = host.username
-        components.host = host.address
-        components.port = host.port
+    public enum Error: LocalizedError {
+        case invalidSSHURL
+        case launchFailed(output: String?)
+        case processError(String)
 
-        guard let url = components.url else {
-            return "Unable to build the SSH URL for the default terminal."
+        public var errorDescription: String? {
+            switch self {
+            case .invalidSSHURL:
+                "Unable to build the SSH URL for the default terminal."
+            case .launchFailed(let output):
+                if let output, !output.isEmpty {
+                    "Unable to open the default terminal: \(output)"
+                } else {
+                    "Unable to open the default terminal."
+                }
+            case .processError(let description):
+                "Unable to open the default terminal: \(description)"
+            }
+        }
+    }
+
+    public static func openSSHSession(for host: RemoteHost) -> Error? {
+        guard let url = SSHURLBuilder.url(for: host) else {
+            return .invalidSSHURL
         }
 
         let process = Process()
@@ -30,16 +45,12 @@ public enum DefaultTerminalService {
                     encoding: .utf8
                 )?.trimmingCharacters(in: .whitespacesAndNewlines)
 
-                if let output, !output.isEmpty {
-                    return "Unable to open the default terminal: \(output)"
-                }
-
-                return "Unable to open the default terminal."
+                return .launchFailed(output: output)
             }
 
             return nil
         } catch {
-            return "Unable to open the default terminal: \(error.localizedDescription)"
+            return .processError(error.localizedDescription)
         }
     }
 }

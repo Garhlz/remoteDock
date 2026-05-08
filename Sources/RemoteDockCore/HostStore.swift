@@ -53,10 +53,12 @@ public enum HostStore {
     }
 
     public static func loadOrCreateDefaults() throws -> [RemoteHost] {
-        let url = try configFileURL
+        try loadOrCreateDefaults(at: configFileURL)
+    }
 
+    static func loadOrCreateDefaults(at url: URL) throws -> [RemoteHost] {
         guard FileManager.default.fileExists(atPath: url.path) else {
-            try save(defaultHosts)
+            try save(defaultHosts, to: url)
             return defaultHosts
         }
 
@@ -66,7 +68,7 @@ public enum HostStore {
             let normalizedHosts = migrateDefaultsIfNeeded(in: hosts)
 
             if normalizedHosts != hosts {
-                try save(normalizedHosts)
+                try save(normalizedHosts, to: url)
             }
 
             return normalizedHosts
@@ -78,7 +80,10 @@ public enum HostStore {
     }
 
     public static func save(_ hosts: [RemoteHost]) throws {
-        let url = try configFileURL
+        try save(hosts, to: configFileURL)
+    }
+
+    static func save(_ hosts: [RemoteHost], to url: URL) throws {
         let directoryURL = url.deletingLastPathComponent()
 
         do {
@@ -96,7 +101,7 @@ public enum HostStore {
         }
     }
 
-    private static func migrateDefaultsIfNeeded(in hosts: [RemoteHost]) -> [RemoteHost] {
+    static func migrateDefaultsIfNeeded(in hosts: [RemoteHost]) -> [RemoteHost] {
         hosts.map { host in
             let hostWithDirectory = if host.preferredRemoteDirectory == nil {
                 host.withRemoteDirectory(host.suggestedRemoteDirectory)

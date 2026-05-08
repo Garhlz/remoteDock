@@ -23,7 +23,7 @@ RemoteDock 是一个小型 macOS SwiftUI 应用，用来快速连接个人常用
 - Ping 主机并显示 Online、Offline 或 Checking 状态。
 - 一键 Ping 所有主机。
 - 启动后自动执行一次全量 Ping，快速得到初始在线状态。
-- 当打开 SSH 失败时，在界面上显示错误信息。
+- 当复制、打开终端或读取状态失败时，在界面顶部显示短暂反馈条。
 - 支持 Tailscale IP，也支持任何当前网络可访问的主机地址。
 - 从本地 JSON 配置文件加载主机列表。
 - 首次启动时自动创建默认主机配置。
@@ -37,7 +37,9 @@ RemoteDock 是一个小型 macOS SwiftUI 应用，用来快速连接个人常用
 - 左侧支持主机搜索和状态筛选，可按名称、用户名、地址、远程目录以及在线状态过滤。
 - 为每台主机显示最近一次检测时间，便于判断状态是否过期。
 - 为状态、操作和特殊标记增加 tooltip，降低图标理解成本。
+- 统一使用结构化错误类型，并在界面层映射为明确的失败提示。
 - 将主机模型、配置读写、Ping、默认终端和 Tailscale 状态读取抽到 `RemoteDockCore` Swift Package，便于复用和后续测试。
+- `RemoteDockCore` 现已带有 Swift Testing 测试集，覆盖主机模型、配置读写、SSH 命令生成、默认终端 URL、Tailscale 状态和 Ping 执行层。
 
 ## 项目结构
 
@@ -50,7 +52,17 @@ remoteDock/
 │       ├── HostStore.swift
 │       ├── PingService.swift
 │       ├── RemoteHost.swift
+│       ├── SSHCommandBuilder.swift
+│       ├── SSHURLBuilder.swift
 │       └── TailscaleService.swift
+├── Tests/
+│   └── RemoteDockCoreTests/
+│       ├── HostStoreTests.swift
+│       ├── PingServiceTests.swift
+│       ├── RemoteHostTests.swift
+│       ├── SSHCommandBuilderTests.swift
+│       ├── SSHURLBuilderTests.swift
+│       └── TailscaleServiceTests.swift
 ├── remoteDock.xcodeproj
 ├── remoteDock/
 │   ├── remoteDockApp.swift
@@ -69,7 +81,7 @@ remoteDock/
 └── TODO.md
 ```
 
-`ContentView.swift` 负责主窗口状态、双栏布局和主机选择；`RemoteDockCore` 负责不依赖 SwiftUI / AppKit 的纯逻辑；终端自动化、VS Code 打开和剪贴板等 macOS 集成功能继续留在 App target 中。
+`ContentView.swift` 负责主窗口状态、双栏布局、反馈条和主机选择；`RemoteDockCore` 负责不依赖 SwiftUI / AppKit 的纯逻辑；终端自动化、VS Code 打开和剪贴板等 macOS 集成功能继续留在 App target 中。`Tests/RemoteDockCoreTests` 负责这部分核心逻辑的单元测试。
 
 ## 当前界面
 
@@ -85,6 +97,8 @@ remoteDock/
 其中 `Local Tailscale` 只会在地址看起来属于 Tailscale 网络的主机上显示。这个按钮展示的是本机的 `tailscale status`，用于快速确认当前 Mac 是否已经连上 tailnet，不代表远端主机自身状态。
 
 左侧列表现在还支持按状态筛选 `All / Online / Offline / Unchecked`，并显示每台主机的 `Last checked` 相对时间。
+
+当前复制动作和大部分失败操作都会在顶部显示自动消失的反馈条，不再只依赖按钮文案变化或模态弹窗。
 
 ## 主机配置
 
@@ -207,6 +221,21 @@ open .DerivedData/Build/Products/Debug/remoteDock.app
 ```bash
 swift build
 ```
+
+运行核心测试：
+
+```bash
+swift test
+```
+
+当前测试主要覆盖：
+
+- `RemoteHost`：主机识别、默认目录、端口、字段归一化
+- `HostStore`：默认配置写入、JSON 读写、旧配置迁移、非法 JSON
+- `SSHCommandBuilder`：Linux / Windows SSH 命令与 follow-up 命令生成
+- `SSHURLBuilder`：默认终端 `ssh://` URL 生成
+- `TailscaleService`：路径探测、结构化错误和命令执行结果处理
+- `PingService`：执行层注入和结果传递
 
 ## macOS 权限说明
 

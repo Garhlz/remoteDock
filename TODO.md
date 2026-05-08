@@ -23,7 +23,7 @@
 - [x] 为每台主机显示 `Last checked` 时间。
 - [x] 为左侧列表增加状态筛选，例如 `All / Online / Offline / Unchecked`。
 - [x] 为每台主机增加可选 SSH 端口。
-- [ ] 为错误提示和复制反馈增加更明确的短暂提示样式。
+- [x] 为错误提示和复制反馈增加更明确的短暂提示样式。
 
 ## 第二阶段：终端与连接策略
 
@@ -38,13 +38,52 @@
 
 ## 第三阶段：架构与测试
 
+当前 `RemoteDockCore` 已有 `39` 个测试，覆盖 `6` 个 suite。
+
 - [x] 修正 `Ping All` 的进行中状态判断，避免首个主机返回后按钮重新可点，导致重复并发检测。
 - [x] 把纯 Swift 逻辑抽成 `RemoteDockCore` Swift Package。
-- [ ] 为 SSH 命令生成增加单元测试。
-- [ ] 为 JSON 配置读写增加单元测试。
-- [ ] 为 Tailscale 状态读取增加可替换执行层，便于测试、路径探测和错误注入。
-- [ ] 为 Ping 状态更新逻辑增加可测试封装。
-- [ ] 梳理错误类型，避免服务层只返回字符串。
+- [x] 为 `RemoteDockCore` 增加 `RemoteDockCoreTests` test target。
+- [x] 为 `RemoteHost` 增加单元测试：
+  - 默认远程目录推导
+  - Windows 主机识别
+  - Tailscale 地址识别
+  - SSH 命令 / authority / display address 的端口拼接
+  - `startupCommand` / `remoteDirectory` 归一化
+- [x] 为 `HostStore` 增加单元测试：
+  - 默认主机写入
+  - 现有 JSON 读取
+  - 旧配置迁移默认远程目录
+  - 旧配置迁移 Windows `startupCommand`
+  - 非法 JSON 的错误返回
+- [x] 为 SSH 命令生成增加单元测试：
+  - 默认 Linux 登录命令
+  - 带端口的 SSH 命令
+  - 带远程目录的 follow-up 命令
+  - 自定义 `startupCommand`
+  - Windows wrapper 命令生成
+- [x] 为默认终端 URL 生成增加单元测试：
+  - 默认端口
+  - 自定义端口
+  - 用户名与 host 组合
+- [x] 为 Tailscale 状态读取增加可替换执行层，便于测试、路径探测和错误注入。
+- [x] 为 `TailscaleService` 增加单元测试：
+  - 可执行文件路径探测优先级
+  - CLI 缺失时的错误
+  - 空输出和非零退出码处理
+- [x] 为 Ping 状态更新逻辑增加可测试封装。
+- [x] 为 `PingService` 增加单元测试或命令执行抽象：
+  - 成功返回 online
+  - 非零退出码返回 offline
+  - 进程启动失败返回 offline
+- [x] 梳理错误类型，避免服务层只返回字符串。
+
+### 测试实施顺序
+
+1. 建 `RemoteDockCoreTests` target，并先覆盖 `RemoteHost`
+2. 补 `HostStore`，把 JSON 读写和迁移稳定住
+3. 提炼 SSH / URL 生成逻辑，让命令测试不依赖 UI 层
+4. 给 `TailscaleService` / `PingService` 引入可替换执行层，再补测试
+5. 梳理错误类型，把现在的字符串错误逐步改成结构化错误
 
 ## 第四阶段：macOS 原生体验
 
