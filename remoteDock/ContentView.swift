@@ -19,6 +19,8 @@ struct ContentView: View {
     @State private var hostBeingEdited: RemoteHost?
     @State private var isAddingHost = false
     @State private var isPingingAll = false
+    @State private var tailscaleStatusText: String?
+    @State private var didRunInitialPing = false
 
     var body: some View {
         VStack(spacing: 14) {
@@ -49,6 +51,9 @@ struct ContentView: View {
             HostEditorView(title: "Edit Host", host: host) { updatedHost in
                 update(updatedHost)
             }
+        }
+        .sheet(isPresented: isShowingTailscaleStatus) {
+            tailscaleStatusSheet
         }
         .alert("操作失败", isPresented: hasErrorMessage) {
             Button("OK", role: .cancel) {
@@ -201,12 +206,22 @@ struct ContentView: View {
                             copyIPAddress: {
                                 copy(host.address, label: "IP", for: host)
                             },
+                            copyHostDetails: {
+                                copy(host.fullDetailsText, label: "Host", for: host)
+                            },
                             openSSH: {
                                 openSSHSession(for: host)
+                            },
+                            openDefaultTerminal: {
+                                openDefaultTerminalSession(for: host)
                             },
                             openVSCodeRemote: {
                                 openVSCodeRemote(for: host)
                             },
+                            showTailscaleStatus: {
+                                showTailscaleStatus(for: host)
+                            },
+                            showsTailscaleStatusAction: host.usesTailscale,
                             ping: {
                                 Task {
                                     await ping(host)
@@ -300,6 +315,17 @@ struct ContentView: View {
         )
     }
 
+    private var isShowingTailscaleStatus: Binding<Bool> {
+        Binding(
+            get: { tailscaleStatusText != nil },
+            set: { isPresented in
+                if !isPresented {
+                    tailscaleStatusText = nil
+                }
+            }
+        )
+    }
+
     private var selectedHost: RemoteHost? {
         guard let selectedHostID else {
             return filteredHosts.first ?? hosts.first
@@ -348,6 +374,14 @@ struct ContentView: View {
 
             syncSelection()
             errorMessage = error.localizedDescription
+        }
+
+        if !didRunInitialPing && !hosts.isEmpty {
+            didRunInitialPing = true
+
+            Task {
+                await pingAll()
+            }
         }
     }
 
@@ -452,8 +486,30 @@ struct ContentView: View {
     }
 
     @MainActor
+    private func openDefaultTerminalSession(for host: RemoteHost) {
+        if let message = DefaultTerminalService.openSSHSession(for: host) {
+            errorMessage = message
+        }
+    }
+
+    @MainActor
     private func openVSCodeRemote(for host: RemoteHost) {
         if let message = VSCodeService.openRemoteFolder(for: host) {
+            errorMessage = message
+        }
+    }
+
+    @MainActor
+    private func showTailscaleStatus(for host: RemoteHost) {
+        guard host.usesTailscale else {
+            errorMessage = "This host does not look like a Tailscale address."
+            return
+        }
+
+        switch TailscaleService.status() {
+        case .success(let statusText):
+            tailscaleStatusText = statusText
+        case .failure(let message):
             errorMessage = message
         }
     }
@@ -668,6 +724,46 @@ struct ContentView: View {
         case .offline:
             "Host did not respond to ping"
         }
+    }
+
+    private var tailscaleStatusSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Local Tailscale Status")
+                    .font(.title2.bold())
+
+                Spacer()
+
+                Button("Done") {
+                    tailscaleStatusText = nil
+                }
+            }
+
+            ScrollView {
+                Text(tailscaleStatusText ?? "")
+                    .font(.system(.body, design: .monospaced))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+            }
+            .padding(14)
+            .background(Color(nsColor: .textBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            HStack {
+                Spacer()
+
+                Button("Copy") {
+                    guard let tailscaleStatusText else {
+                        return
+                    }
+
+                    ClipboardService.copy(tailscaleStatusText)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 640, minHeight: 420)
     }
 }
 

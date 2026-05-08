@@ -12,8 +12,12 @@ struct HostCard: View {
     let copiedLabel: String?
     let copySSHCommand: () -> Void
     let copyIPAddress: () -> Void
+    let copyHostDetails: () -> Void
     let openSSH: () -> Void
+    let openDefaultTerminal: () -> Void
     let openVSCodeRemote: () -> Void
+    let showTailscaleStatus: () -> Void
+    let showsTailscaleStatusAction: Bool
     let ping: () -> Void
     let edit: () -> Void
     let delete: () -> Void
@@ -53,6 +57,34 @@ struct HostCard: View {
                 .help("Open the host's remote directory in Visual Studio Code")
             }
 
+            if showsTailscaleStatusAction {
+                HStack(spacing: 12) {
+                    Button(action: openDefaultTerminal) {
+                        Label("Open in Default Terminal", systemImage: "rectangle.on.rectangle")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .help("Open an SSH session using the default SSH URL handler")
+
+                    Button(action: showTailscaleStatus) {
+                        Label("Local Tailscale", systemImage: "wave.3.right.circle")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .help("Show the local Tailscale status output")
+                }
+            } else {
+                Button(action: openDefaultTerminal) {
+                    Label("Open in Default Terminal", systemImage: "rectangle.on.rectangle")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .help("Open an SSH session using the default SSH URL handler")
+            }
+
             Divider()
 
             HStack(spacing: 8) {
@@ -66,6 +98,12 @@ struct HostCard: View {
                     title: copiedLabel == "IP" ? "Copied IP" : "Copy IP",
                     systemImage: copiedLabel == "IP" ? "checkmark" : "network",
                     action: copyIPAddress
+                )
+
+                actionPill(
+                    title: copiedLabel == "Host" ? "Copied Host" : "Copy Host Info",
+                    systemImage: copiedLabel == "Host" ? "checkmark" : "list.bullet.rectangle",
+                    action: copyHostDetails
                 )
 
                 actionPill(

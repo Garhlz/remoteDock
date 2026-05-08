@@ -43,6 +43,22 @@ struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
         "\(username)@\(address)"
     }
 
+    var usesTailscale: Bool {
+        Self.looksLikeTailscaleAddress(address)
+    }
+
+    var fullDetailsText: String {
+        [
+            "Name: \(name)",
+            "Username: \(username)",
+            "Address: \(address)",
+            "SSH Target: \(sshTarget)",
+            "Remote Directory: \(effectiveRemoteDirectory)",
+            "Startup Command: \(preferredStartupCommand ?? "Default behavior")"
+        ]
+        .joined(separator: "\n")
+    }
+
     var preferredRemoteDirectory: String? {
         Self.normalizedRemoteDirectory(remoteDirectory)
     }
@@ -132,5 +148,28 @@ struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
     private static func looksLikeWindowsName(_ value: String) -> Bool {
         let lowercasedValue = value.lowercased()
         return lowercasedValue.contains("windows") || lowercasedValue.contains("win")
+    }
+
+    private static func looksLikeTailscaleAddress(_ value: String) -> Bool {
+        let lowercasedValue = value.lowercased()
+
+        if lowercasedValue.hasSuffix(".ts.net") {
+            return true
+        }
+
+        if lowercasedValue.hasPrefix("fd7a:115c:a1e0:") {
+            return true
+        }
+
+        let components = value.split(separator: ".")
+        guard components.count == 4,
+              let firstOctet = Int(components[0]),
+              let secondOctet = Int(components[1]),
+              (0...255).contains(firstOctet),
+              (0...255).contains(secondOctet) else {
+            return false
+        }
+
+        return firstOctet == 100 && (64...127).contains(secondOctet)
     }
 }
