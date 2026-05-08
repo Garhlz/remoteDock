@@ -8,45 +8,56 @@
 import SwiftUI
 
 struct ContentView: View {
-    private let hosts = [
-        RemoteHost(name: "Arch T480s", username: "elaine", address: "100.117.140.113"),
-        RemoteHost(name: "Windows Omen16", username: "elaine", address: "100.102.71.37")
-    ]
-
+    @State private var hosts: [RemoteHost] = []
     @State private var statuses: [UUID: HostStatus] = [:]
     @State private var copiedFeedback: [UUID: String] = [:]
     @State private var errorMessage: String?
+    @State private var configPath: String = ""
+    @State private var didCopyConfigPath = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
 
-            ForEach(hosts) { host in
-                HostCard(
-                    host: host,
-                    status: status(for: host),
-                    copiedLabel: copiedFeedback[host.id],
-                    copySSHCommand: {
-                        copy(host.sshCommand, label: "SSH", for: host)
-                    },
-                    copyIPAddress: {
-                        copy(host.address, label: "IP", for: host)
-                    },
-                    openSSH: {
-                        openSSHSession(for: host)
-                    },
-                    ping: {
-                        Task {
-                            await ping(host)
-                        }
-                    }
+            if hosts.isEmpty {
+                ContentUnavailableView(
+                    "No Hosts",
+                    systemImage: "server.rack",
+                    description: Text("RemoteDock could not load any hosts.")
                 )
+            } else {
+                ForEach(hosts) { host in
+                    HostCard(
+                        host: host,
+                        status: status(for: host),
+                        copiedLabel: copiedFeedback[host.id],
+                        copySSHCommand: {
+                            copy(host.sshCommand, label: "SSH", for: host)
+                        },
+                        copyIPAddress: {
+                            copy(host.address, label: "IP", for: host)
+                        },
+                        openSSH: {
+                            openSSHSession(for: host)
+                        },
+                        ping: {
+                            Task {
+                                await ping(host)
+                            }
+                        }
+                    )
+                }
             }
 
             Spacer(minLength: 0)
+
+            configPathFooter
         }
         .padding(24)
-        .frame(width: 620, height: 380)
+        .frame(width: 680, height: 440)
+        .task {
+            loadHosts()
+        }
         .alert("操作失败", isPresented: hasErrorMessage) {
             Button("OK", role: .cancel) {
                 errorMessage = nil
@@ -76,7 +87,33 @@ struct ContentView: View {
                 Label(isPingingAll ? "Checking" : "Ping All", systemImage: "network")
             }
             .buttonStyle(.borderedProminent)
-            .disabled(isPingingAll)
+            .disabled(hosts.isEmpty || isPingingAll)
+        }
+    }
+
+    private var configPathFooter: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "doc.text")
+                .foregroundStyle(.secondary)
+
+            Text(configPath.isEmpty ? "Config path unavailable" : configPath)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            Spacer()
+
+            Button(action: copyConfigPath) {
+                Label(didCopyConfigPath ? "Copied" : "Copy Path", systemImage: didCopyConfigPath ? "checkmark" : "doc.on.doc")
+            }
+            .buttonStyle(.borderless)
+            .disabled(configPath.isEmpty)
+
+            Button(action: loadHosts) {
+                Label("Reload", systemImage: "arrow.clockwise")
+            }
+            .buttonStyle(.borderless)
         }
     }
 
@@ -92,7 +129,23 @@ struct ContentView: View {
     }
 
     private var isPingingAll: Bool {
-        hosts.allSatisfy { status(for: $0) == .checking }
+        !hosts.isEmpty && hosts.allSatisfy { status(for: $0) == .checking }
+    }
+
+    @MainActor
+    private func loadHosts() {
+        do {
+            hosts = try HostStore.loadOrCreateDefaults()
+            configPath = try HostStore.configFileURL.path
+        } catch {
+            hosts = HostStore.defaultHosts
+
+            if let path = try? HostStore.configFileURL.path {
+                configPath = path
+            }
+
+            errorMessage = error.localizedDescription
+        }
     }
 
     @MainActor
@@ -105,6 +158,21 @@ struct ContentView: View {
             if copiedFeedback[host.id] == label {
                 copiedFeedback[host.id] = nil
             }
+        }
+    }
+
+    @MainActor
+    private func copyConfigPath() {
+        guard !configPath.isEmpty else {
+            return
+        }
+
+        ClipboardService.copy(configPath)
+        didCopyConfigPath = true
+
+        Task {
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            didCopyConfigPath = false
         }
     }
 

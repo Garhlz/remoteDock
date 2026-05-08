@@ -6,7 +6,7 @@ RemoteDock 是一个小型 macOS SwiftUI 应用，用来快速连接个人常用
 
 ## 当前功能
 
-- 显示固定的 SSH 主机列表。
+- 显示本地配置的 SSH 主机列表。
 - 一键复制 SSH 命令到剪贴板。
 - 一键复制主机 IP 地址。
 - 打开 Terminal 并启动 SSH 会话。
@@ -14,6 +14,9 @@ RemoteDock 是一个小型 macOS SwiftUI 应用，用来快速连接个人常用
 - 一键 Ping 所有主机。
 - 当打开 SSH 失败时，在界面上显示错误信息。
 - 支持 Tailscale IP，也支持任何当前网络可访问的主机地址。
+- 从本地 JSON 配置文件加载主机列表。
+- 首次启动时自动创建默认主机配置。
+- 在窗口底部显示配置文件路径，并支持复制路径。
 
 ## 项目结构
 
@@ -28,6 +31,7 @@ remoteDock/
 │   │   └── RemoteHost.swift
 │   ├── Services/
 │   │   ├── ClipboardService.swift
+│   │   ├── HostStore.swift
 │   │   ├── PingService.swift
 │   │   └── TerminalService.swift
 │   ├── Views/
@@ -38,6 +42,33 @@ remoteDock/
 ```
 
 `ContentView.swift` 负责主窗口状态和整体交互；模型、服务和主机卡片视图已经拆分到独立文件中。
+
+## 主机配置
+
+RemoteDock 会从本地 JSON 文件加载主机列表。首次启动时，如果配置文件不存在，应用会自动创建一个默认配置。
+
+配置文件位置：
+
+```text
+~/Library/Application Support/RemoteDock/hosts.json
+```
+
+也可以在应用窗口底部直接查看并复制当前配置路径。
+
+配置示例：
+
+```json
+[
+  {
+    "address": "100.117.140.113",
+    "id": "00000000-0000-0000-0000-000000000001",
+    "name": "Arch T480s",
+    "username": "elaine"
+  }
+]
+```
+
+如果 JSON 格式损坏，RemoteDock 会在界面上显示错误，并临时回退到默认主机列表。它不会自动覆盖损坏的配置文件。
 
 ## 环境要求
 
