@@ -8,8 +8,11 @@ RemoteDock 是一个小型 macOS SwiftUI 应用，用来快速连接个人常用
 
 - 显示固定的 SSH 主机列表。
 - 一键复制 SSH 命令到剪贴板。
+- 一键复制主机 IP 地址。
 - 打开 Terminal 并启动 SSH 会话。
 - Ping 主机并显示 Online、Offline 或 Checking 状态。
+- 一键 Ping 所有主机。
+- 当打开 SSH 失败时，在界面上显示错误信息。
 - 支持 Tailscale IP，也支持任何当前网络可访问的主机地址。
 
 ## 项目结构
@@ -20,12 +23,21 @@ remoteDock/
 ├── remoteDock/
 │   ├── remoteDockApp.swift
 │   ├── ContentView.swift
+│   ├── Models/
+│   │   ├── HostStatus.swift
+│   │   └── RemoteHost.swift
+│   ├── Services/
+│   │   ├── ClipboardService.swift
+│   │   ├── PingService.swift
+│   │   └── TerminalService.swift
+│   ├── Views/
+│   │   └── HostCard.swift
 │   └── Assets.xcassets
 ├── README.md
 └── TODO.md
 ```
 
-目前大部分代码仍在 `ContentView.swift` 中。对于早期版本这是可以接受的；下一步比较合适的清理工作，是把模型、视图和服务拆到不同文件中。
+`ContentView.swift` 负责主窗口状态和整体交互；模型、服务和主机卡片视图已经拆分到独立文件中。
 
 ## 环境要求
 
@@ -73,4 +85,3 @@ System Settings > Privacy & Security > Automation
 ```
 
 由于这个本地工具会启动 `ping` 等系统命令，当前项目关闭了 App Sandbox。
-
