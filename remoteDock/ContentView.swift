@@ -14,6 +14,8 @@ struct ContentView: View {
     @State private var errorMessage: String?
     @State private var configPath: String = ""
     @State private var didCopyConfigPath = false
+    @State private var hostBeingEdited: RemoteHost?
+    @State private var isAddingHost = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -27,6 +29,8 @@ struct ContentView: View {
                 )
             } else {
                 ForEach(hosts) { host in
+                    let index = hosts.firstIndex(where: { $0.id == host.id }) ?? 0
+
                     HostCard(
                         host: host,
                         status: status(for: host),
@@ -44,7 +48,21 @@ struct ContentView: View {
                             Task {
                                 await ping(host)
                             }
-                        }
+                        },
+                        edit: {
+                            hostBeingEdited = host
+                        },
+                        delete: {
+                            delete(host)
+                        },
+                        moveUp: {
+                            move(host, by: -1)
+                        },
+                        moveDown: {
+                            move(host, by: 1)
+                        },
+                        canMoveUp: index > 0,
+                        canMoveDown: index < hosts.count - 1
                     )
                 }
             }
@@ -57,6 +75,16 @@ struct ContentView: View {
         .frame(width: 680, height: 440)
         .task {
             loadHosts()
+        }
+        .sheet(isPresented: $isAddingHost) {
+            HostEditorView(title: "Add Host", host: nil) { host in
+                add(host)
+            }
+        }
+        .sheet(item: $hostBeingEdited) { host in
+            HostEditorView(title: "Edit Host", host: host) { updatedHost in
+                update(updatedHost)
+            }
         }
         .alert("操作失败", isPresented: hasErrorMessage) {
             Button("OK", role: .cancel) {
@@ -78,6 +106,13 @@ struct ContentView: View {
             }
 
             Spacer()
+
+            Button(action: {
+                isAddingHost = true
+            }) {
+                Label("Add Host", systemImage: "plus")
+            }
+            .buttonStyle(.bordered)
 
             Button(action: {
                 Task {
@@ -144,6 +179,55 @@ struct ContentView: View {
                 configPath = path
             }
 
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func add(_ host: RemoteHost) {
+        hosts.append(host)
+        saveHosts()
+    }
+
+    @MainActor
+    private func update(_ updatedHost: RemoteHost) {
+        guard let index = hosts.firstIndex(where: { $0.id == updatedHost.id }) else {
+            return
+        }
+
+        hosts[index] = updatedHost
+        saveHosts()
+    }
+
+    @MainActor
+    private func delete(_ host: RemoteHost) {
+        hosts.removeAll { $0.id == host.id }
+        statuses[host.id] = nil
+        copiedFeedback[host.id] = nil
+        saveHosts()
+    }
+
+    @MainActor
+    private func move(_ host: RemoteHost, by offset: Int) {
+        guard let currentIndex = hosts.firstIndex(where: { $0.id == host.id }) else {
+            return
+        }
+
+        let newIndex = currentIndex + offset
+        guard hosts.indices.contains(newIndex) else {
+            return
+        }
+
+        hosts.swapAt(currentIndex, newIndex)
+        saveHosts()
+    }
+
+    @MainActor
+    private func saveHosts() {
+        do {
+            try HostStore.save(hosts)
+            configPath = try HostStore.configFileURL.path
+        } catch {
             errorMessage = error.localizedDescription
         }
     }
