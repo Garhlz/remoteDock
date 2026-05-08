@@ -22,6 +22,9 @@ RemoteDock 是一个小型 macOS SwiftUI 应用，用来快速连接个人常用
 - 调整主机显示顺序，并自动保存到 JSON。
 - 为每台主机配置默认远程目录，供 VS Code Remote 使用。
 - 为每台主机配置可选的启动命令，覆盖默认 SSH 登录后的启动行为。
+- 使用双栏布局：左侧主机列表，右侧详情与操作面板。
+- 左侧支持主机搜索，可按名称、用户名、地址和远程目录过滤。
+- 为状态、操作和特殊标记增加 tooltip，降低图标理解成本。
 
 ## 项目结构
 
@@ -48,7 +51,18 @@ remoteDock/
 └── TODO.md
 ```
 
-`ContentView.swift` 负责主窗口状态和整体交互；模型、服务和主机卡片视图已经拆分到独立文件中。
+`ContentView.swift` 负责主窗口状态、双栏布局和主机选择；模型、服务和主机卡片视图已经拆分到独立文件中。
+
+## 当前界面
+
+当前版本使用双栏桌面工具布局：
+
+- 左侧：主机导航列表，支持搜索和选择。
+- 右侧：当前主机的详情页，包含状态、操作按钮和连接配置。
+- 顶部：概览统计和全局操作。
+- 底部：配置文件路径与重新加载入口。
+
+`Open in Ghostty` 和 `Open in VS Code` 是右侧的一级操作；复制 SSH、复制 IP、Ping 和管理动作作为次级操作保留在同一区域。
 
 ## 主机配置
 
@@ -169,7 +183,7 @@ open .DerivedData/Build/Products/Debug/remoteDock.app
 
 RemoteDock 当前通过 Ghostty 的 AppleScript 接口打开终端，并把 SSH 命令发送到新窗口或当前启动窗口中执行。
 
-第一次使用 `Open SSH` 时，macOS 可能会弹出 Automation 权限提示，询问是否允许 `remoteDock` 控制 `Ghostty`。需要允许后，这个功能才会正常工作。
+第一次使用 `Open in Ghostty` 时，macOS 可能会弹出 Automation 权限提示，询问是否允许 `remoteDock` 控制 `Ghostty`。需要允许后，这个功能才会正常工作。
 
 当前实现的实际效果是：
 

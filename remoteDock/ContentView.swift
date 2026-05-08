@@ -9,6 +9,8 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var hosts: [RemoteHost] = []
+    @State private var selectedHostID: UUID?
+    @State private var searchText: String = ""
     @State private var statuses: [UUID: HostStatus] = [:]
     @State private var copiedFeedback: [UUID: String] = [:]
     @State private var errorMessage: String?
@@ -16,66 +18,25 @@ struct ContentView: View {
     @State private var didCopyConfigPath = false
     @State private var hostBeingEdited: RemoteHost?
     @State private var isAddingHost = false
+    @State private var isPingingAll = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            header
+        VStack(spacing: 14) {
+            topBar
 
-            if hosts.isEmpty {
-                ContentUnavailableView(
-                    "No Hosts",
-                    systemImage: "server.rack",
-                    description: Text("RemoteDock could not load any hosts.")
-                )
-            } else {
-                ForEach(hosts) { host in
-                    let index = hosts.firstIndex(where: { $0.id == host.id }) ?? 0
+            HSplitView {
+                sidebar
+                    .frame(minWidth: 220, idealWidth: 240, maxWidth: 270)
 
-                    HostCard(
-                        host: host,
-                        status: status(for: host),
-                        copiedLabel: copiedFeedback[host.id],
-                        copySSHCommand: {
-                            copy(host.sshCommand, label: "SSH", for: host)
-                        },
-                        copyIPAddress: {
-                            copy(host.address, label: "IP", for: host)
-                        },
-                        openSSH: {
-                            openSSHSession(for: host)
-                        },
-                        openVSCodeRemote: {
-                            openVSCodeRemote(for: host)
-                        },
-                        ping: {
-                            Task {
-                                await ping(host)
-                            }
-                        },
-                        edit: {
-                            hostBeingEdited = host
-                        },
-                        delete: {
-                            delete(host)
-                        },
-                        moveUp: {
-                            move(host, by: -1)
-                        },
-                        moveDown: {
-                            move(host, by: 1)
-                        },
-                        canMoveUp: index > 0,
-                        canMoveDown: index < hosts.count - 1
-                    )
-                }
+                detailPane
+                    .frame(minWidth: 520, idealWidth: 760, maxWidth: .infinity, maxHeight: .infinity)
             }
-
-            Spacer(minLength: 0)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             configPathFooter
         }
-        .padding(24)
-        .frame(width: 680, height: 440)
+        .padding(18)
+        .frame(minWidth: 920, minHeight: 620)
         .task {
             loadHosts()
         }
@@ -98,17 +59,24 @@ struct ContentView: View {
         }
     }
 
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
+    private var topBar: some View {
+        HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("RemoteDock")
-                    .font(.largeTitle.bold())
+                    .font(.system(size: 28, weight: .bold))
 
-                Text("Quick access to your SSH hosts")
+                Text("Remote hosts, SSH sessions, and remote workspaces.")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
 
-            Spacer()
+            Spacer(minLength: 12)
+
+            HStack(spacing: 8) {
+                compactMetric(title: "Hosts", value: "\(hosts.count)")
+                compactMetric(title: "Online", value: "\(onlineHostsCount)")
+                compactMetric(title: "Unchecked", value: "\(uncheckedHostsCount)")
+            }
 
             Button(action: {
                 isAddingHost = true
@@ -127,31 +95,197 @@ struct ContentView: View {
             .buttonStyle(.borderedProminent)
             .disabled(hosts.isEmpty || isPingingAll)
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(.quaternary)
+        }
+    }
+
+    private var sidebar: some View {
+        VStack(spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Hosts")
+                        .font(.headline)
+
+                    Text("\(hosts.count) configured")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 10)
+
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+
+                TextField("Search hosts", text: $searchText)
+                    .textFieldStyle(.plain)
+
+                if !searchText.isEmpty {
+                    Button(action: {
+                        searchText = ""
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color.secondary.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal, 14)
+            .padding(.bottom, 12)
+
+            Divider()
+
+            if filteredHosts.isEmpty {
+                ContentUnavailableView(
+                    searchText.isEmpty ? "No Hosts" : "No Results",
+                    systemImage: searchText.isEmpty ? "server.rack" : "magnifyingglass",
+                    description: Text(
+                        searchText.isEmpty
+                        ? "Add your first host to get started."
+                        : "Try a different name, address, username, or path."
+                    )
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List(selection: $selectedHostID) {
+                    ForEach(filteredHosts) { host in
+                        HostSidebarRow(
+                            host: host,
+                            status: status(for: host),
+                            isSelected: selectedHostID == host.id
+                        )
+                        .tag(host.id)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10))
+                        .listRowBackground(Color.clear)
+                    }
+                }
+                .listStyle(.sidebar)
+                .scrollContentBackground(.hidden)
+            }
+        }
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(.quaternary)
+        }
+    }
+
+    private var detailPane: some View {
+        Group {
+            if let host = selectedHost {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        detailHeader(for: host)
+
+                        HostCard(
+                            status: status(for: host),
+                            copiedLabel: copiedFeedback[host.id],
+                            copySSHCommand: {
+                                copy(host.sshCommand, label: "SSH", for: host)
+                            },
+                            copyIPAddress: {
+                                copy(host.address, label: "IP", for: host)
+                            },
+                            openSSH: {
+                                openSSHSession(for: host)
+                            },
+                            openVSCodeRemote: {
+                                openVSCodeRemote(for: host)
+                            },
+                            ping: {
+                                Task {
+                                    await ping(host)
+                                }
+                            },
+                            edit: {
+                                hostBeingEdited = host
+                            },
+                            delete: {
+                                delete(host)
+                            },
+                            moveUp: {
+                                move(host, by: -1)
+                            },
+                            moveDown: {
+                                move(host, by: 1)
+                            },
+                            canMoveUp: hostIndex(for: host) > 0,
+                            canMoveDown: hostIndex(for: host) < hosts.count - 1
+                        )
+
+                        hostMetadata(for: host)
+                    }
+                    .padding(22)
+                }
+            } else {
+                ContentUnavailableView(
+                    "No Host Selected",
+                    systemImage: "sidebar.leading",
+                    description: Text("Select a host from the left to view details and actions.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(.quaternary)
+        }
     }
 
     private var configPathFooter: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "doc.text")
-                .foregroundStyle(.secondary)
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Label("Config File", systemImage: "doc.text")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .help("RemoteDock host configuration file")
 
-            Text(configPath.isEmpty ? "Config path unavailable" : configPath)
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
+                Text(configPath.isEmpty ? "Config path unavailable" : configPath)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
 
-            Spacer()
+            Spacer(minLength: 12)
 
             Button(action: copyConfigPath) {
                 Label(didCopyConfigPath ? "Copied" : "Copy Path", systemImage: didCopyConfigPath ? "checkmark" : "doc.on.doc")
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.bordered)
             .disabled(configPath.isEmpty)
+            .help("Copy the config file path")
 
             Button(action: loadHosts) {
                 Label("Reload", systemImage: "arrow.clockwise")
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.bordered)
+            .help("Reload hosts from disk")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(.quaternary)
         }
     }
 
@@ -166,8 +300,37 @@ struct ContentView: View {
         )
     }
 
-    private var isPingingAll: Bool {
-        !hosts.isEmpty && hosts.allSatisfy { status(for: $0) == .checking }
+    private var selectedHost: RemoteHost? {
+        guard let selectedHostID else {
+            return filteredHosts.first ?? hosts.first
+        }
+
+        return hosts.first(where: { $0.id == selectedHostID }) ?? filteredHosts.first ?? hosts.first
+    }
+
+    private var onlineHostsCount: Int {
+        hosts.filter { status(for: $0) == .online }.count
+    }
+
+    private var uncheckedHostsCount: Int {
+        hosts.filter { status(for: $0) == .unknown }.count
+    }
+
+    private var filteredHosts: [RemoteHost] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !query.isEmpty else {
+            return hosts
+        }
+
+        let normalizedQuery = query.lowercased()
+
+        return hosts.filter { host in
+            host.name.lowercased().contains(normalizedQuery) ||
+            host.username.lowercased().contains(normalizedQuery) ||
+            host.address.lowercased().contains(normalizedQuery) ||
+            host.effectiveRemoteDirectory.lowercased().contains(normalizedQuery)
+        }
     }
 
     @MainActor
@@ -175,6 +338,7 @@ struct ContentView: View {
         do {
             hosts = try HostStore.loadOrCreateDefaults()
             configPath = try HostStore.configFileURL.path
+            syncSelection()
         } catch {
             hosts = HostStore.defaultHosts
 
@@ -182,6 +346,7 @@ struct ContentView: View {
                 configPath = path
             }
 
+            syncSelection()
             errorMessage = error.localizedDescription
         }
     }
@@ -189,6 +354,7 @@ struct ContentView: View {
     @MainActor
     private func add(_ host: RemoteHost) {
         hosts.append(host)
+        selectedHostID = host.id
         saveHosts()
     }
 
@@ -199,14 +365,28 @@ struct ContentView: View {
         }
 
         hosts[index] = updatedHost
+        selectedHostID = updatedHost.id
         saveHosts()
     }
 
     @MainActor
     private func delete(_ host: RemoteHost) {
+        guard let deletedIndex = hosts.firstIndex(where: { $0.id == host.id }) else {
+            return
+        }
+
         hosts.removeAll { $0.id == host.id }
         statuses[host.id] = nil
         copiedFeedback[host.id] = nil
+
+        if selectedHostID == host.id {
+            if hosts.indices.contains(deletedIndex) {
+                selectedHostID = hosts[deletedIndex].id
+            } else {
+                selectedHostID = hosts.last?.id
+            }
+        }
+
         saveHosts()
     }
 
@@ -230,6 +410,7 @@ struct ContentView: View {
         do {
             try HostStore.save(hosts)
             configPath = try HostStore.configFileURL.path
+            syncSelection()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -285,6 +466,11 @@ struct ContentView: View {
 
     @MainActor
     private func pingAll() async {
+        guard !isPingingAll else {
+            return
+        }
+
+        isPingingAll = true
         for host in hosts {
             statuses[host.id] = .checking
         }
@@ -301,9 +487,224 @@ struct ContentView: View {
                 statuses[hostID] = isOnline ? .online : .offline
             }
         }
+
+        isPingingAll = false
     }
 
     private func status(for host: RemoteHost) -> HostStatus {
         statuses[host.id, default: .unknown]
+    }
+
+    private func hostIndex(for host: RemoteHost) -> Int {
+        hosts.firstIndex(where: { $0.id == host.id }) ?? 0
+    }
+
+    private func syncSelection() {
+        if hosts.isEmpty {
+            selectedHostID = nil
+            return
+        }
+
+        if let selectedHostID,
+           filteredHosts.contains(where: { $0.id == selectedHostID }) {
+            return
+        }
+
+        selectedHostID = filteredHosts.first?.id ?? hosts.first?.id
+    }
+
+    private func compactMetric(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Text(value)
+                .font(.headline)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .help("\(title): \(value)")
+    }
+
+    private func detailHeader(for host: RemoteHost) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(host.name)
+                        .font(.title.weight(.semibold))
+
+                    Text(host.sshTarget)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 12)
+
+                Label(status(for: host).rawValue, systemImage: status(for: host).systemImage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(status(for: host).color)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(status(for: host).color.opacity(0.12))
+                    .clipShape(Capsule())
+                    .help(statusTooltip(for: status(for: host)))
+            }
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    detailTag(title: host.username, systemImage: "person")
+                    detailTag(title: host.effectiveRemoteDirectory, systemImage: "folder")
+
+                    if host.preferredStartupCommand != nil {
+                        detailTag(title: "Custom startup", systemImage: "bolt")
+                    }
+
+                    Spacer(minLength: 0)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    detailTag(title: host.username, systemImage: "person")
+                    detailTag(title: host.effectiveRemoteDirectory, systemImage: "folder")
+
+                    if host.preferredStartupCommand != nil {
+                        detailTag(title: "Custom startup", systemImage: "bolt")
+                    }
+                }
+            }
+        }
+    }
+
+    private func hostMetadata(for host: RemoteHost) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Connection Details")
+                .font(.headline)
+
+            detailGridRow(
+                leftTitle: "Username",
+                leftValue: host.username,
+                rightTitle: "Address",
+                rightValue: host.address
+            )
+
+            detailGridRow(
+                leftTitle: "Remote Directory",
+                leftValue: host.effectiveRemoteDirectory,
+                rightTitle: "VS Code Target",
+                rightValue: host.vscodeRemoteDirectory
+            )
+
+            detailRow(title: "Startup Command", value: host.preferredStartupCommand ?? "Default behavior")
+        }
+        .padding(20)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(.quaternary)
+        }
+    }
+
+    private func detailRow(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            Text(value)
+                .font(.system(.body, design: .monospaced))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
+        }
+    }
+
+    private func detailGridRow(
+        leftTitle: String,
+        leftValue: String,
+        rightTitle: String,
+        rightValue: String
+    ) -> some View {
+        HStack(alignment: .top, spacing: 18) {
+            detailCell(title: leftTitle, value: leftValue)
+            detailCell(title: rightTitle, value: rightValue)
+        }
+    }
+
+    private func detailCell(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            Text(value)
+                .font(.system(.body, design: .monospaced))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func detailTag(title: String, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.secondary.opacity(0.08))
+            .clipShape(Capsule())
+    }
+
+    private func statusTooltip(for status: HostStatus) -> String {
+        switch status {
+        case .unknown:
+            "Host has not been checked yet"
+        case .checking:
+            "Checking host reachability"
+        case .online:
+            "Host responded to ping"
+        case .offline:
+            "Host did not respond to ping"
+        }
+    }
+}
+
+private struct HostSidebarRow: View {
+    let host: RemoteHost
+    let status: HostStatus
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(status.color)
+                .frame(width: 9, height: 9)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(host.name)
+                    .font(.body.weight(.medium))
+                    .lineLimit(1)
+
+                Text(host.displayAddress)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            if host.preferredStartupCommand != nil {
+                Image(systemName: "bolt.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .help("This host runs a custom startup command after SSH login")
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .background(isSelected ? Color.accentColor.opacity(0.14) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }

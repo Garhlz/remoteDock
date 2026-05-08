@@ -8,7 +8,6 @@
 import SwiftUI
 
 struct HostCard: View {
-    let host: RemoteHost
     let status: HostStatus
     let copiedLabel: String?
     let copySSHCommand: () -> Void
@@ -24,43 +23,64 @@ struct HostCard: View {
     let canMoveDown: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(host.name)
-                        .font(.headline)
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 12) {
+                Text("Actions")
+                    .font(.headline)
 
-                    Text(host.displayAddress)
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                Spacer(minLength: 0)
 
                 statusBadge
                 moreMenu
             }
 
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 Button(action: openSSH) {
-                    Label("Open SSH", systemImage: "terminal")
+                    Label("Open in Ghostty", systemImage: "terminal")
+                        .frame(maxWidth: .infinity)
                 }
                 .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .help("Open Ghostty and start an SSH session")
 
                 Button(action: openVSCodeRemote) {
                     Label("Open in VS Code", systemImage: "chevron.left.forwardslash.chevron.right")
+                        .frame(maxWidth: .infinity)
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .help("Open the host's remote directory in Visual Studio Code")
+            }
 
-                Button(action: ping) {
-                    Label(status == .checking ? "Checking" : "Ping", systemImage: "network")
-                }
+            Divider()
+
+            HStack(spacing: 8) {
+                actionPill(
+                    title: copiedLabel == "SSH" ? "Copied SSH" : "Copy SSH",
+                    systemImage: copiedLabel == "SSH" ? "checkmark" : "doc.on.doc",
+                    action: copySSHCommand
+                )
+
+                actionPill(
+                    title: copiedLabel == "IP" ? "Copied IP" : "Copy IP",
+                    systemImage: copiedLabel == "IP" ? "checkmark" : "network",
+                    action: copyIPAddress
+                )
+
+                actionPill(
+                    title: status == .checking ? "Checking" : "Ping",
+                    systemImage: "wave.3.right",
+                    action: ping
+                )
                 .disabled(status == .checking)
 
-                Spacer()
+                Spacer(minLength: 0)
             }
             .buttonStyle(.bordered)
         }
-        .padding(16)
-        .background(.background)
+        .padding(22)
+        .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
@@ -116,5 +136,14 @@ struct HostCard: View {
         }
         .menuStyle(.borderlessButton)
         .frame(width: 28, height: 28)
+        .help("More host actions")
+    }
+
+    private func actionPill(title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+        }
+        .controlSize(.regular)
+        .help(title)
     }
 }

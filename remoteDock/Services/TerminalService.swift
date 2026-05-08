@@ -12,6 +12,10 @@ enum TerminalService {
     private static let ghosttyBundleIdentifier = "com.mitchellh.ghostty"
 
     static func openSSHSession(for host: RemoteHost) -> String? {
+        guard isGhosttyInstalled else {
+            return "Ghostty is not installed. Install Ghostty first, or use Copy SSH instead."
+        }
+
         let process = Process()
         let outputPipe = Pipe()
 
@@ -30,8 +34,17 @@ enum TerminalService {
                     encoding: .utf8
                 )?.trimmingCharacters(in: .whitespacesAndNewlines)
 
-                if let output, !output.isEmpty {
-                    return "Ghostty automation failed: \(output)"
+                if let output {
+                    if isAutomationPermissionError(output) {
+                        return """
+                        RemoteDock is not allowed to control Ghostty yet.
+                        Open System Settings > Privacy & Security > Automation, then allow RemoteDock to control Ghostty.
+                        """
+                    }
+
+                    if !output.isEmpty {
+                        return "Ghostty automation failed: \(output)"
+                    }
                 }
 
                 return "Ghostty automation failed with exit code \(process.terminationStatus)."
@@ -43,8 +56,12 @@ enum TerminalService {
         }
     }
 
+    private static var isGhosttyInstalled: Bool {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: ghosttyBundleIdentifier) != nil
+    }
+
     private static func appleScriptArguments(for host: RemoteHost) -> [String] {
-        let commandSequence = commandSequence(for: host)
+        let sshCommand = sshCommand(for: host)
         let isGhosttyRunning = !NSRunningApplication
             .runningApplications(withBundleIdentifier: ghosttyBundleIdentifier)
             .isEmpty
@@ -55,7 +72,11 @@ enum TerminalService {
                 "tell application \"Ghostty\" to set win to new window",
                 "-e",
                 "tell application \"Ghostty\" to set term to focused terminal of selected tab of win",
-            ] + commandSequence.appleScriptEvents(forTerminalVariable: "term")
+                "-e",
+                "tell application \"Ghostty\" to input text \(appleScriptQuoted(sshCommand)) to term",
+                "-e",
+                "tell application \"Ghostty\" to send key \"enter\" to term"
+            ]
         }
 
         return [
@@ -65,42 +86,41 @@ enum TerminalService {
             "delay 0.2",
             "-e",
             "tell application \"Ghostty\" to set term to focused terminal of selected tab of front window",
-        ] + commandSequence.appleScriptEvents(forTerminalVariable: "term")
+            "-e",
+            "tell application \"Ghostty\" to input text \(appleScriptQuoted(sshCommand)) to term",
+            "-e",
+            "tell application \"Ghostty\" to send key \"enter\" to term"
+        ]
     }
 
-    private static func commandSequence(for host: RemoteHost) -> CommandSequence {
+    private static func sshCommand(for host: RemoteHost) -> String {
+        let sshPrefix = "TERM=xterm-256color /usr/bin/ssh"
+
+        guard let remoteCommand = remoteCommand(for: host) else {
+            return "\(sshPrefix) \(host.sshTarget)"
+        }
+
+        return "\(sshPrefix) -t \(host.sshTarget) \(singleQuotedForShell(remoteCommand))"
+    }
+
+    private static func remoteCommand(for host: RemoteHost) -> String? {
         if let startupCommand = host.preferredStartupCommand {
-            return CommandSequence(
-                initialCommand: baseSSHCommand(for: host),
-                followUpCommand: resolvedStartupCommand(startupCommand, for: host)
-            )
+            return resolvedStartupCommand(startupCommand, for: host)
         }
 
         if host.isWindowsHost {
-            return CommandSequence(
-                initialCommand: baseSSHCommand(for: host),
-                followUpCommand: defaultWindowsFollowUpCommand(remoteDirectory: host.preferredRemoteDirectory)
-            )
+            return defaultWindowsFollowUpCommand(remoteDirectory: host.preferredRemoteDirectory)
         }
 
         if let remoteDirectory = host.preferredRemoteDirectory {
-            return CommandSequence(
-                initialCommand: baseSSHCommand(for: host),
-                followUpCommand: defaultFollowUpCommand(for: host, remoteDirectory: remoteDirectory)
-            )
+            return defaultFollowUpCommand(remoteDirectory: remoteDirectory)
         }
 
-        return CommandSequence(initialCommand: baseSSHCommand(for: host))
+        return nil
     }
 
-    private static func baseSSHCommand(for host: RemoteHost) -> String {
-        let sshPrefix = "TERM=xterm-256color /usr/bin/ssh"
-
-        return "\(sshPrefix) \(host.sshTarget)"
-    }
-
-    private static func defaultFollowUpCommand(for host: RemoteHost, remoteDirectory: String) -> String {
-        return "cd -- \(singleQuotedForShell(remoteDirectory))"
+    private static func defaultFollowUpCommand(remoteDirectory: String) -> String {
+        "cd -- \(singleQuotedForShell(remoteDirectory)) && exec \"${SHELL:-/bin/sh}\" -l"
     }
 
     private static func defaultWindowsFollowUpCommand(remoteDirectory: String?) -> String {
@@ -130,53 +150,14 @@ enum TerminalService {
         "'\(value.replacingOccurrences(of: "'", with: "'\"'\"'"))'"
     }
 
-    private static func doubleQuotedForShell(_ value: String) -> String {
-        let escapedValue = value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "$", with: "\\$")
-            .replacingOccurrences(of: "`", with: "\\`")
-
-        return "\"\(escapedValue)\""
-    }
-
     private static func appleScriptQuoted(_ value: String) -> String {
         "\"\(value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\""
     }
-}
 
-private struct CommandSequence {
-    let initialCommand: String
-    let followUpCommand: String?
-
-    init(initialCommand: String, followUpCommand: String? = nil) {
-        self.initialCommand = initialCommand
-        self.followUpCommand = followUpCommand
-    }
-
-    func appleScriptEvents(forTerminalVariable terminalVariable: String) -> [String] {
-        var events = [
-            "-e",
-            "tell application \"Ghostty\" to input text \(appleScriptQuoted(initialCommand)) to \(terminalVariable)",
-            "-e",
-            "tell application \"Ghostty\" to send key \"enter\" to \(terminalVariable)"
-        ]
-
-        if let followUpCommand {
-            events.append(contentsOf: [
-                "-e",
-                "delay 1.5",
-                "-e",
-                "tell application \"Ghostty\" to input text \(appleScriptQuoted(followUpCommand)) to \(terminalVariable)",
-                "-e",
-                "tell application \"Ghostty\" to send key \"enter\" to \(terminalVariable)"
-            ])
-        }
-
-        return events
-    }
-
-    private func appleScriptQuoted(_ value: String) -> String {
-        "\"\(value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\""
+    private static func isAutomationPermissionError(_ output: String) -> Bool {
+        output.contains("-1743") ||
+        output.localizedCaseInsensitiveContains("Not authorized to send Apple events") ||
+        output.localizedCaseInsensitiveContains("not allowed assistive access") ||
+        output.localizedCaseInsensitiveContains("automation")
     }
 }
