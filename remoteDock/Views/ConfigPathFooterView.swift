@@ -2,7 +2,9 @@ import SwiftUI
 
 struct ConfigPathFooterView: View {
     let configPath: String
+    let didCopyConfig: Bool
     let didCopyPath: Bool
+    let copyConfig: () -> Void
     let copyPath: () -> Void
     let reload: () -> Void
 
@@ -22,6 +24,12 @@ struct ConfigPathFooterView: View {
             }
 
             Spacer(minLength: 12)
+
+            Button(action: copyConfig) {
+                Label(didCopyConfig ? "Copied Config" : "Copy Config", systemImage: didCopyConfig ? "checkmark" : "curlybraces")
+            }
+            .buttonStyle(.bordered)
+            .help("Copy the full configuration JSON")
 
             Button(action: copyPath) {
                 Label(didCopyPath ? "Copied" : "Copy Path", systemImage: didCopyPath ? "checkmark" : "doc.on.doc")

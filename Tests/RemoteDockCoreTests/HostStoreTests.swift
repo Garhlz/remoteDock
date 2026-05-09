@@ -225,6 +225,30 @@ struct HostStoreTests {
         #expect(migratedHosts == [host])
     }
 
+    @Test
+    func formattedConfigurationJSONRoundTripsHostsAndGroups() throws {
+        let group = HostGroup(name: "Servers")
+        let configuration = RemoteDockConfiguration(
+            hosts: [
+                RemoteHost(
+                    name: "Arch",
+                    username: "elaine",
+                    address: "100.117.140.113",
+                    groupID: group.id,
+                    remoteDirectory: "/srv/project"
+                )
+            ],
+            groups: [group]
+        )
+
+        let json = try configuration.formattedJSON()
+        let decoded = try JSONDecoder().decode(RemoteDockConfiguration.self, from: Data(json.utf8))
+
+        #expect(json.contains(#""groups""#))
+        #expect(json.contains(#""hosts""#))
+        #expect(decoded == configuration)
+    }
+
     private func makeTemporaryDirectory() -> URL {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

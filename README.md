@@ -15,6 +15,9 @@ RemoteDock 是一个小型 macOS SwiftUI 应用，用来快速连接个人常用
 - 一键复制 SSH 命令到剪贴板。
 - 一键复制主机 IP 地址。
 - 一键复制完整主机信息，包含名称、SSH 目标、远程目录和启动命令。
+- 一键复制当前选中主机的 JSON 配置片段。
+- 一键复制当前完整配置文档 JSON。
+- 支持一键复制当前主机为新条目，默认名称为 `{原主机名} copy`，重复时会自动递增。
 - 支持为每台主机配置可选端口，适配非默认 SSH 端口。
 - 支持为主机创建用户自定义分组，并在左侧按分组展示。
 - 支持创建、重命名、删除和排序分组；删除分组时主机会自动回到未分组状态。
@@ -51,7 +54,7 @@ RemoteDock 是一个小型 macOS SwiftUI 应用，用来快速连接个人常用
 - 右侧详情页会把首选打开方式作为主按钮突出显示，并将其他打开方式整理为次级动作。
 - 统一使用结构化错误类型，并在界面层映射为明确的失败提示。
 - 将主机模型、配置读写、Ping、默认终端和 Tailscale 状态读取抽到 `RemoteDockCore` Swift Package，便于复用和后续测试。
-- `RemoteDockCore` 现已带有 Swift Testing 测试集，当前共 56 个测试，覆盖主机模型、配置读写、SSH 命令生成、默认终端 URL、Tailscale 状态以及带延迟解析的 Ping 执行层。
+- `RemoteDockCore` 现已带有 Swift Testing 测试集，当前共 61 个测试，覆盖主机模型、配置读写、SSH 命令生成、默认终端 URL、Tailscale 状态以及带延迟解析的 Ping 执行层。
 
 ## 项目结构
 
@@ -115,7 +118,9 @@ remoteDock/
 - 顶部：概览统计和全局操作。
 - 底部：配置文件路径与重新加载入口。
 
-`Open in Ghostty`、`Open in VS Code`、`Open in Default Terminal` 和 `Local Tailscale` 是右侧的主要操作；复制 SSH、复制 IP、复制完整主机信息、Ping 和管理动作作为次级操作保留在同一区域。
+`Open in Ghostty`、`Open in VS Code`、`Open in Default Terminal` 和 `Local Tailscale` 是右侧的主要操作；复制 SSH、复制 IP、Ping 和管理动作作为次级操作保留在同一区域。
+
+底部配置栏除了复制配置文件路径，还可以直接复制当前完整配置文档；右侧当前主机的更多菜单里则增加了复制单主机 JSON 片段、复制主机摘要，以及 `Duplicate` 入口，便于快速备份、分享、手动编辑配置或直接克隆现有主机。
 
 其中 `Local Tailscale` 只会在地址看起来属于 Tailscale 网络的主机上显示。这个按钮展示的是本机的 `tailscale status`，用于快速确认当前 Mac 是否已经连上 tailnet，不代表远端主机自身状态。
 

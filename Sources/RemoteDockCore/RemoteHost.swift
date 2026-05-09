@@ -158,6 +158,41 @@ public struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
         return #"call "%USERPROFILE%\bin\remote.cmd" "{remoteDirectory}""#
     }
 
+    public func formattedJSON() throws -> String {
+        try JSONExportFormatter.formattedString(from: self)
+    }
+
+    public func duplicated(named name: String) -> RemoteHost {
+        RemoteHost(
+            name: name,
+            username: username,
+            address: address,
+            port: port,
+            groupID: groupID,
+            remoteDirectory: remoteDirectory,
+            startupCommand: startupCommand,
+            preferredOpenMode: preferredOpenMode,
+            autoPingIntervalMinutes: autoPingIntervalMinutes,
+            autoPingDisabled: autoPingDisabled
+        )
+    }
+
+    public func suggestedDuplicateName(takenNames: some Sequence<String>) -> String {
+        let existingNames = Set(takenNames)
+        let baseName = Self.duplicateBaseName(from: name)
+
+        if !existingNames.contains(baseName) {
+            return baseName
+        }
+
+        var copyIndex = 2
+        while existingNames.contains("\(baseName) \(copyIndex)") {
+            copyIndex += 1
+        }
+
+        return "\(baseName) \(copyIndex)"
+    }
+
     public func withRemoteDirectory(_ remoteDirectory: String?) -> RemoteHost {
         RemoteHost(
             id: id,
@@ -322,5 +357,15 @@ public struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
         }
 
         return firstOctet == 100 && (64 ... 127).contains(secondOctet)
+    }
+
+    private static func duplicateBaseName(from value: String) -> String {
+        let pattern = #"\s+copy(?:\s+\d+)?$"#
+        let strippedValue = value.replacingOccurrences(
+            of: pattern,
+            with: "",
+            options: [.regularExpression, .caseInsensitive]
+        )
+        return "\(strippedValue) copy"
     }
 }

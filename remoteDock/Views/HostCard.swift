@@ -16,12 +16,14 @@ struct HostCard: View {
     let copySSHCommand: () -> Void
     let copyIPAddress: () -> Void
     let copyHostDetails: () -> Void
+    let copyHostConfiguration: () -> Void
     let openSSH: () -> Void
     let openDefaultTerminal: () -> Void
     let openVSCodeRemote: () -> Void
     let showTailscaleStatus: () -> Void
     let showsTailscaleStatusAction: Bool
     let ping: () -> Void
+    let duplicate: () -> Void
     let edit: () -> Void
     let delete: () -> Void
     let moveUp: () -> Void
@@ -96,16 +98,26 @@ struct HostCard: View {
     private var moreMenu: some View {
         Menu {
             Section("Copy") {
-                Button(action: copySSHCommand) {
-                    Label(copiedLabel == "SSH" ? "Copied SSH" : "Copy SSH", systemImage: "doc.on.doc")
+                Button(action: copyHostDetails) {
+                    Label(
+                        copiedLabel == "Host" ? "Copied Host Info" : "Copy Host Info",
+                        systemImage: copiedLabel == "Host" ? "checkmark" : "list.bullet.rectangle"
+                    )
                 }
 
-                Button(action: copyIPAddress) {
-                    Label(copiedLabel == "IP" ? "Copied IP" : "Copy IP", systemImage: "number")
+                Button(action: copyHostConfiguration) {
+                    Label(
+                        copiedLabel == "HostConfig" ? "Copied Host Config" : "Copy Host Config",
+                        systemImage: copiedLabel == "HostConfig" ? "checkmark" : "curlybraces"
+                    )
                 }
             }
 
             Section("Manage") {
+                Button(action: duplicate) {
+                    Label("Duplicate", systemImage: "plus.square.on.square")
+                }
+
                 Button(action: edit) {
                     Label("Edit", systemImage: "pencil")
                 }
@@ -311,12 +323,6 @@ struct HostCard: View {
             title: copiedLabel == "IP" ? "Copied IP" : "Copy IP",
             systemImage: copiedLabel == "IP" ? "checkmark" : "network",
             action: copyIPAddress
-        )
-
-        actionPill(
-            title: copiedLabel == "Host" ? "Copied Host" : "Copy Host Info",
-            systemImage: copiedLabel == "Host" ? "checkmark" : "list.bullet.rectangle",
-            action: copyHostDetails
         )
 
         actionPill(

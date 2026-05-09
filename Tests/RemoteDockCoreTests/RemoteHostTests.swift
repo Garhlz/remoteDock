@@ -425,4 +425,85 @@ struct RemoteHostTests {
         #expect(host.effectiveAutoPingIntervalMinutes == 12)
         #expect(host.effectiveAutoPingDescription == "12 min")
     }
+
+    @Test
+    func formattedHostJSONRoundTripsSelectedHost() throws {
+        let host = RemoteHost(
+            name: "Arch",
+            username: "elaine",
+            address: "100.117.140.113",
+            port: 2222,
+            remoteDirectory: "/srv/project",
+            startupCommand: "exec zsh -l",
+            preferredOpenMode: .vscode,
+            autoPingIntervalMinutes: 15
+        )
+
+        let json = try host.formattedJSON()
+        let decoded = try JSONDecoder().decode(RemoteHost.self, from: Data(json.utf8))
+
+        #expect(json.contains(#""preferredOpenMode""#))
+        #expect(json.contains(#""startupCommand""#))
+        #expect(decoded == host)
+    }
+
+    @Test
+    func duplicatedHostPreservesFieldsAndGetsNewIdentity() {
+        let original = RemoteHost(
+            name: "Arch",
+            username: "elaine",
+            address: "100.117.140.113",
+            port: 2222,
+            groupID: UUID(),
+            remoteDirectory: "/srv/project",
+            startupCommand: "exec zsh -l",
+            preferredOpenMode: .vscode,
+            autoPingIntervalMinutes: 15,
+            autoPingDisabled: true
+        )
+
+        let duplicated = original.duplicated(named: "Arch copy")
+
+        #expect(duplicated.id != original.id)
+        #expect(duplicated.name == "Arch copy")
+        #expect(duplicated.username == original.username)
+        #expect(duplicated.address == original.address)
+        #expect(duplicated.port == original.port)
+        #expect(duplicated.groupID == original.groupID)
+        #expect(duplicated.preferredRemoteDirectory == original.preferredRemoteDirectory)
+        #expect(duplicated.preferredStartupCommand == original.preferredStartupCommand)
+        #expect(duplicated.preferredOpenModeOrNil == original.preferredOpenModeOrNil)
+        #expect(duplicated.preferredAutoPingIntervalMinutesOrNil == original.preferredAutoPingIntervalMinutesOrNil)
+        #expect(duplicated.preferredAutoPingDisabledOrNil == original.preferredAutoPingDisabledOrNil)
+    }
+
+    @Test
+    func suggestedDuplicateNameUsesCopySuffixAndIncrementsWhenNeeded() {
+        let original = RemoteHost(
+            name: "Arch",
+            username: "elaine",
+            address: "100.117.140.113"
+        )
+
+        #expect(original.suggestedDuplicateName(takenNames: ["Arch"]) == "Arch copy")
+        #expect(original.suggestedDuplicateName(takenNames: ["Arch", "Arch copy"]) == "Arch copy 2")
+        #expect(original.suggestedDuplicateName(takenNames: ["Arch", "Arch copy", "Arch copy 2"]) == "Arch copy 3")
+    }
+
+    @Test
+    func suggestedDuplicateNameNormalizesExistingCopySuffix() {
+        let original = RemoteHost(
+            name: "Arch copy",
+            username: "elaine",
+            address: "100.117.140.113"
+        )
+        let numbered = RemoteHost(
+            name: "Arch copy 2",
+            username: "elaine",
+            address: "100.117.140.113"
+        )
+
+        #expect(original.suggestedDuplicateName(takenNames: ["Arch", "Arch copy"]) == "Arch copy 2")
+        #expect(numbered.suggestedDuplicateName(takenNames: ["Arch", "Arch copy", "Arch copy 2"]) == "Arch copy 3")
+    }
 }

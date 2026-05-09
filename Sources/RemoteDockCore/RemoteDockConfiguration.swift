@@ -8,4 +8,8 @@ public struct RemoteDockConfiguration: Codable, Sendable, Equatable {
         self.hosts = hosts
         self.groups = groups
     }
+
+    public func formattedJSON() throws -> String {
+        try JSONExportFormatter.formattedString(from: self)
+    }
 }

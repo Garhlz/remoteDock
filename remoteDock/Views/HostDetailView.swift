@@ -15,11 +15,13 @@ struct HostDetailView: View {
     let copySSHCommand: () -> Void
     let copyIPAddress: () -> Void
     let copyHostDetails: () -> Void
+    let copyHostConfiguration: () -> Void
     let openSSH: () -> Void
     let openDefaultTerminal: () -> Void
     let openVSCodeRemote: () -> Void
     let showTailscaleStatus: () -> Void
     let ping: () -> Void
+    let duplicate: () -> Void
     let edit: () -> Void
     let delete: () -> Void
     let moveUp: () -> Void
@@ -40,12 +42,14 @@ struct HostDetailView: View {
                 copySSHCommand: copySSHCommand,
                 copyIPAddress: copyIPAddress,
                 copyHostDetails: copyHostDetails,
+                copyHostConfiguration: copyHostConfiguration,
                 openSSH: openSSH,
                 openDefaultTerminal: openDefaultTerminal,
                 openVSCodeRemote: openVSCodeRemote,
                 showTailscaleStatus: showTailscaleStatus,
                 showsTailscaleStatusAction: host.usesTailscale,
                 ping: ping,
+                duplicate: duplicate,
                 edit: edit,
                 delete: delete,
                 moveUp: moveUp,

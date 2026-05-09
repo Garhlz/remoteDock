@@ -73,6 +73,7 @@ struct ContentView: View {
     @State private var copiedFeedback: [UUID: String] = [:]
     @State private var feedbackMessage: FeedbackMessage?
     @State private var configPath: String = ""
+    @State private var didCopyConfig = false
     @State private var didCopyConfigPath = false
     @State private var hostBeingEdited: RemoteHost?
     @State private var isAddingHost = false
@@ -134,7 +135,9 @@ struct ContentView: View {
 
             ConfigPathFooterView(
                 configPath: configPath,
+                didCopyConfig: didCopyConfig,
                 didCopyPath: didCopyConfigPath,
+                copyConfig: copyConfiguration,
                 copyPath: copyConfigPath,
                 reload: loadHosts
             )
@@ -205,6 +208,7 @@ struct ContentView: View {
                         copySSHCommand: { copy(host.sshCommand, label: "SSH", for: host) },
                         copyIPAddress: { copy(host.address, label: "IP", for: host) },
                         copyHostDetails: { copy(fullDetailsText(for: host), label: "Host", for: host) },
+                        copyHostConfiguration: { copyHostConfiguration(host) },
                         openSSH: { openSSHSession(for: host) },
                         openDefaultTerminal: { openDefaultTerminalSession(for: host) },
                         openVSCodeRemote: { openVSCodeRemote(for: host) },
@@ -214,6 +218,7 @@ struct ContentView: View {
                                 await ping(host)
                             }
                         },
+                        duplicate: { duplicate(host) },
                         edit: { hostBeingEdited = host },
                         delete: { delete(host) },
                         moveUp: { move(host, by: -1) },
@@ -408,6 +413,20 @@ struct ContentView: View {
     }
 
     @MainActor
+    private func duplicate(_ host: RemoteHost) {
+        guard let index = hosts.firstIndex(where: { $0.id == host.id }) else {
+            return
+        }
+
+        let duplicateName = host.suggestedDuplicateName(takenNames: hosts.map(\.name))
+        let duplicatedHost = host.duplicated(named: duplicateName)
+        hosts.insert(duplicatedHost, at: index + 1)
+        selectedHostID = duplicatedHost.id
+        saveHosts()
+        showFeedback(.success, "Duplicated \(host.name) as \(duplicateName).")
+    }
+
+    @MainActor
     private func delete(_ host: RemoteHost) {
         guard let deletedIndex = hosts.firstIndex(where: { $0.id == host.id }) else {
             return
@@ -517,6 +536,41 @@ struct ContentView: View {
         Task {
             try? await Task.sleep(nanoseconds: 1_200_000_000)
             didCopyConfigPath = false
+        }
+    }
+
+    @MainActor
+    private func copyConfiguration() {
+        do {
+            let configuration = RemoteDockConfiguration(hosts: hosts, groups: groups)
+            ClipboardService.copy(try configuration.formattedJSON())
+            didCopyConfig = true
+            showFeedback(.success, "Full configuration copied.")
+
+            Task {
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                didCopyConfig = false
+            }
+        } catch {
+            showFeedback(.error, error.localizedDescription)
+        }
+    }
+
+    @MainActor
+    private func copyHostConfiguration(_ host: RemoteHost) {
+        do {
+            ClipboardService.copy(try host.formattedJSON())
+            copiedFeedback[host.id] = "HostConfig"
+            showFeedback(.success, "Host configuration copied for \(host.name).")
+
+            Task {
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                if copiedFeedback[host.id] == "HostConfig" {
+                    copiedFeedback[host.id] = nil
+                }
+            }
+        } catch {
+            showFeedback(.error, error.localizedDescription)
         }
     }
 
@@ -814,6 +868,8 @@ struct ContentView: View {
             "Address copied for \(host.name)."
         case "Host":
             "Full host details copied for \(host.name)."
+        case "HostConfig":
+            "Host configuration copied for \(host.name)."
         default:
             "\(label) copied for \(host.name)."
         }
