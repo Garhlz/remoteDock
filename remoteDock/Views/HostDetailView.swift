@@ -152,9 +152,16 @@ struct HostDetailView: View {
                 rightValue: latencyText ?? "Unavailable"
             )
 
-            HStack(alignment: .top, spacing: 18) {
-                detailCell(title: "Remote Directory", value: host.effectiveRemoteDirectory)
-                lastCheckedDetailCell
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 18) {
+                    detailCell(title: "Remote Directory", value: host.effectiveRemoteDirectory)
+                    lastCheckedDetailCell
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    detailCell(title: "Remote Directory", value: host.effectiveRemoteDirectory)
+                    lastCheckedDetailCell
+                }
             }
 
             detailGridRow(
@@ -266,9 +273,16 @@ struct HostDetailView: View {
         rightValue: String
     ) -> some View {
         /// 双列网格行，用于并排展示信息密度相近的两个字段。
-        HStack(alignment: .top, spacing: 18) {
-            detailCell(title: leftTitle, value: leftValue)
-            detailCell(title: rightTitle, value: rightValue)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 18) {
+                detailCell(title: leftTitle, value: leftValue)
+                detailCell(title: rightTitle, value: rightValue)
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                detailCell(title: leftTitle, value: leftValue)
+                detailCell(title: rightTitle, value: rightValue)
+            }
         }
     }
 

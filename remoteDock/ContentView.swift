@@ -64,6 +64,13 @@ struct SidebarSection: Identifiable {
     let hosts: [RemoteHost]
 }
 
+/// 主窗口根据可用宽度切换布局模式，而不是只依赖固定最小尺寸。
+private enum WindowLayoutMode {
+    case regular
+    case compact
+    case stacked
+}
+
 /// 主窗口容器视图，负责页面级状态、主机操作和双栏布局编排。
 ///
 /// 这个文件可以视为整个应用的“页面控制器”：
@@ -105,62 +112,51 @@ struct ContentView: View {
     @State private var didStartAutoPingLoop = false
 
     var body: some View {
-        /// `body` 不是“渲染一次”的命令式代码，而是“当前状态下界面应该长什么样”的声明。
-        VStack(spacing: 14) {
-            DashboardHeaderView(
-                hostCount: hosts.count,
-                onlineCount: onlineHostsCount,
-                uncheckedCount: uncheckedHostsCount,
-                isPingingAll: isPingingAll,
-                hasHosts: !hosts.isEmpty,
-                addHost: { isAddingHost = true },
-                pingAll: {
-                    Task {
-                        await pingAll()
+        GeometryReader { proxy in
+            let layoutMode = layoutMode(for: proxy.size.width)
+            let horizontalPadding = layoutMode == .stacked ? 14.0 : 18.0
+            let verticalPadding = layoutMode == .stacked ? 14.0 : 18.0
+
+            /// `body` 不是“渲染一次”的命令式代码，而是“当前状态下界面应该长什么样”的声明。
+            VStack(spacing: layoutMode == .stacked ? 12 : 14) {
+                DashboardHeaderView(
+                    hostCount: hosts.count,
+                    onlineCount: onlineHostsCount,
+                    uncheckedCount: uncheckedHostsCount,
+                    isPingingAll: isPingingAll,
+                    hasHosts: !hosts.isEmpty,
+                    isCompact: layoutMode != .regular,
+                    addHost: { isAddingHost = true },
+                    pingAll: {
+                        Task {
+                            await pingAll()
+                        }
+                    }
+                )
+
+                if let feedbackMessage {
+                    FeedbackBannerView(feedback: feedbackMessage) {
+                        self.feedbackMessage = nil
                     }
                 }
-            )
 
-            if let feedbackMessage {
-                FeedbackBannerView(feedback: feedbackMessage) {
-                    self.feedbackMessage = nil
-                }
-            }
+                mainContent(for: layoutMode)
 
-            HSplitView {
-                HostsSidebarView(
-                    hosts: hosts,
-                    groups: groups,
-                    searchText: $searchText,
-                    selectedFilter: $selectedFilter,
-                    selectedHostID: $selectedHostID,
-                    isSidebarControlsExpanded: $isSidebarControlsExpanded,
-                    filteredHosts: filteredHosts,
-                    sidebarSections: sidebarSections,
-                    lastCheckedAt: lastCheckedAt,
-                    openModeSystemImage: { effectiveOpenMode(for: $0).systemImage },
-                    status: status(for:),
-                    latencyText: latencyText(for:),
-                    manageGroups: { isManagingGroups = true }
+                ConfigPathFooterView(
+                    configPath: configPath,
+                    didCopyConfig: didCopyConfig,
+                    didCopyPath: didCopyConfigPath,
+                    isCompact: layoutMode != .regular,
+                    copyConfig: copyConfiguration,
+                    copyPath: copyConfigPath,
+                    reload: loadHosts
                 )
-                .frame(minWidth: 220, idealWidth: 240, maxWidth: 270)
-
-                detailPane
-                    .frame(minWidth: 520, idealWidth: 760, maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            ConfigPathFooterView(
-                configPath: configPath,
-                didCopyConfig: didCopyConfig,
-                didCopyPath: didCopyConfigPath,
-                copyConfig: copyConfiguration,
-                copyPath: copyConfigPath,
-                reload: loadHosts
-            )
+            .padding(.horizontal, horizontalPadding)
+            .padding(.vertical, verticalPadding)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .padding(18)
-        .frame(minWidth: 920, minHeight: 620)
+        .frame(minWidth: 760, minHeight: 560)
         /// 第一个 task 用于窗口出现时读取配置。
         .task {
             loadHosts()
@@ -214,6 +210,54 @@ struct ContentView: View {
         .focusedSceneValue(\.selectedHostName, selectedHost?.name)
     }
 
+    @ViewBuilder
+    private func mainContent(for layoutMode: WindowLayoutMode) -> some View {
+        if layoutMode == .stacked {
+            VStack(spacing: 12) {
+                sidebar
+                    .frame(minHeight: 220, idealHeight: 280, maxHeight: 320)
+
+                detailPane
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        } else {
+            HSplitView {
+                sidebar
+                    .frame(
+                        minWidth: layoutMode == .compact ? 210 : 230,
+                        idealWidth: layoutMode == .compact ? 228 : 250,
+                        maxWidth: layoutMode == .compact ? 255 : 290
+                    )
+
+                detailPane
+                    .frame(
+                        minWidth: layoutMode == .compact ? 420 : 520,
+                        idealWidth: layoutMode == .compact ? 620 : 760,
+                        maxWidth: .infinity,
+                        maxHeight: .infinity
+                    )
+            }
+        }
+    }
+
+    private var sidebar: some View {
+        HostsSidebarView(
+            hosts: hosts,
+            groups: groups,
+            searchText: $searchText,
+            selectedFilter: $selectedFilter,
+            selectedHostID: $selectedHostID,
+            isSidebarControlsExpanded: $isSidebarControlsExpanded,
+            filteredHosts: filteredHosts,
+            sidebarSections: sidebarSections,
+            lastCheckedAt: lastCheckedAt,
+            openModeSystemImage: { effectiveOpenMode(for: $0).systemImage },
+            status: status(for:),
+            latencyText: latencyText(for:),
+            manageGroups: { isManagingGroups = true }
+        )
+    }
+
     /// 右侧详情区并不自己保存状态，而是完全根据当前 `selectedHost` 决定展示什么。
     private var detailPane: some View {
         Group {
@@ -252,7 +296,7 @@ struct ContentView: View {
                         canMoveDown: canMove(host, by: 1),
                         assignGroup: { assignGroup($0, to: host) }
                     )
-                    .padding(22)
+                    .padding(20)
                 }
             } else {
                 ContentUnavailableView(
@@ -269,6 +313,18 @@ struct ContentView: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(.quaternary)
         }
+    }
+
+    private func layoutMode(for width: CGFloat) -> WindowLayoutMode {
+        if width < 900 {
+            return .stacked
+        }
+
+        if width < 1180 {
+            return .compact
+        }
+
+        return .regular
     }
 
     /// 把“是否显示 Tailscale 弹窗”转换成一个 `Binding<Bool>`，

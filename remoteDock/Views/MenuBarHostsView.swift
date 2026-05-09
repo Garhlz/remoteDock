@@ -9,7 +9,6 @@ import RemoteDockCore
 struct MenuBarHostsView: View {
     /// 菜单栏需要知道全局默认打开方式，这样没有主机级覆盖时也能正确决定主动作。
     @AppStorage(AppSettings.defaultOpenModeKey) private var defaultOpenModeRawValue = AppSettings.defaultOpenMode.rawValue
-    @Environment(\.openWindow) private var openWindow
 
     /// 这些状态是菜单栏自己的局部快照，不直接和主窗口共享内存。
     /// 每次展开时它会从配置文件重新加载，保证信息尽量新鲜。
@@ -22,51 +21,34 @@ struct MenuBarHostsView: View {
     @State private var isPingingAll = false
 
     var body: some View {
-        /// `MenuBarExtra` 的内容最终会被渲染成菜单项，因此这里用一串顺序化的按钮和 section 组织。
-        Group {
-            Button("Show Main Window") {
-                showMainWindow()
-            }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                topActionsSection
 
-            Button(isPingingAll ? "Checking All Hosts..." : "Ping All Hosts") {
-                pingAll()
-            }
-            .disabled(hosts.isEmpty || isPingingAll)
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
 
-            Divider()
+                if hosts.isEmpty {
+                    emptyStateSection
+                } else {
+                    statusSummary
 
-            if let errorMessage {
-                Text(errorMessage)
-                    .foregroundStyle(.red)
-            }
-
-            if hosts.isEmpty {
-                Text("No hosts configured")
-                    .foregroundStyle(.secondary)
-            } else {
-                statusSummary
-
-                ForEach(hostGroups) { group in
-                    if !group.hosts.isEmpty {
-                        Section(group.title) {
-                            ForEach(group.hosts) { host in
-                                hostMenu(for: host)
-                            }
+                    ForEach(hostGroups) { group in
+                        if !group.hosts.isEmpty {
+                            hostGroupSection(group)
                         }
                     }
                 }
-            }
 
-            Divider()
-
-            Button("Reload Hosts") {
-                loadHosts()
-            }
-
-            Button("Quit RemoteDock") {
-                NSApp.terminate(nil)
+                footerActionsSection
             }
         }
+        .padding(12)
+        .frame(width: 320)
+        .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             loadHosts()
         }
@@ -96,7 +78,7 @@ struct MenuBarHostsView: View {
             return
         }
 
-        openWindow(id: "main")
+        AppBridge.shared.openMainWindow?()
     }
 
     /// 尝试找出当前最像“主窗口”的现有 NSWindow，避免重复打开多个主界面窗口。
@@ -142,6 +124,78 @@ struct MenuBarHostsView: View {
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, 2)
+    }
+
+    private var topActionsSection: some View {
+        VStack(spacing: 8) {
+            actionRowButton(
+                title: "Show Main Window",
+                systemImage: "macwindow",
+                secondaryText: "Bring the current app window to front",
+                isProminent: true,
+                action: showMainWindow
+            )
+
+            actionRowButton(
+                title: isPingingAll ? "Checking All Hosts..." : "Ping All Hosts",
+                systemImage: "wave.3.right",
+                secondaryText: "Refresh online status and latency",
+                isDisabled: hosts.isEmpty || isPingingAll,
+                action: pingAll
+            )
+        }
+    }
+
+    private var emptyStateSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("No hosts configured")
+                .font(.subheadline.weight(.semibold))
+
+            Text("Add a host in the main window to use quick actions here.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(.quaternary)
+        }
+    }
+
+    private var footerActionsSection: some View {
+        VStack(spacing: 8) {
+            actionRowButton(
+                title: "Reload Hosts",
+                systemImage: "arrow.clockwise",
+                secondaryText: "Reload configuration from disk",
+                action: loadHosts
+            )
+
+            actionRowButton(
+                title: "Quit RemoteDock",
+                systemImage: "power",
+                secondaryText: "Close the app and menu bar helper",
+                action: { NSApp.terminate(nil) }
+            )
+        }
+    }
+
+    private func hostGroupSection(_ group: HostMenuSection) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(group.title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 2)
+
+            VStack(spacing: 4) {
+                ForEach(group.hosts) { host in
+                    hostMenu(for: host)
+                }
+            }
+        }
     }
 
     /// 菜单栏里的主机分组逻辑与 sidebar 保持一致，保证用户在两个入口看到相同结构。
@@ -214,11 +268,24 @@ struct MenuBarHostsView: View {
         } label: {
             HStack {
                 Label(host.name, systemImage: status(for: host).systemImage)
+                    .lineLimit(1)
                 Spacer()
                 Text(host.address)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(.quaternary)
             }
         }
+        .buttonStyle(.plain)
     }
 
     private func primaryActionTitle(for host: RemoteHost) -> String {
@@ -324,6 +391,56 @@ struct MenuBarHostsView: View {
         }
 
         return String(format: "%.1f ms", value)
+    }
+
+    private func actionRowButton(
+        title: String,
+        systemImage: String,
+        secondaryText: String,
+        isProminent: Bool = false,
+        isDisabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(width: 16)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(isProminent ? Color.accentColor : Color.primary)
+
+                    Text(secondaryText)
+                        .font(.caption)
+                        .foregroundStyle(isProminent ? Color.accentColor.opacity(0.78) : Color.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                isProminent
+                ? Color.accentColor.opacity(0.18)
+                : Color(nsColor: .controlBackgroundColor)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(
+                        isProminent
+                        ? Color.accentColor.opacity(0.28)
+                        : Color.secondary.opacity(0.16)
+                    )
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .opacity(isDisabled ? 0.6 : 1)
     }
 }
 

@@ -19,9 +19,10 @@ RemoteDock 主要面向这类日常工作流：
 - `Open in Ghostty` / `Open in Default Terminal` / `Open in VS Code`
 - 单主机 Ping、`Ping All`、延迟与最近检测时间
 - 全局与主机级自动 Ping 策略
-- 菜单栏入口、菜单命令和快捷键
+- 菜单栏入口、菜单命令、快捷键与可隐藏的状态栏图标
 - Tailscale 状态辅助查看
 - 配置复制、导出和示例配置参考
+- 应用图标与菜单栏图标已接入
 
 ## 仓库结构
 
@@ -39,7 +40,7 @@ remoteDock/
 
 项目分成两层：
 
-1. **App 层**：`remoteDock/` + `remoteDock.xcodeproj`，负责 SwiftUI 界面、菜单栏和系统集成
+1. **App 层**：`remoteDock/` + `remoteDock.xcodeproj`，负责 SwiftUI 界面、AppKit 状态栏集成和系统能力接入
 2. **Core 层**：`Sources/RemoteDockCore/` + `Package.swift`，负责模型、配置、SSH 命令、Ping、Tailscale 等纯逻辑
 
 ## 快速开始

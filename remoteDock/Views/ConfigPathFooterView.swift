@@ -9,54 +9,93 @@ struct ConfigPathFooterView: View {
     let configPath: String
     let didCopyConfig: Bool
     let didCopyPath: Bool
+    let isCompact: Bool
     let copyConfig: () -> Void
     let copyPath: () -> Void
     let reload: () -> Void
 
     var body: some View {
-        /// 左边展示路径，右边集中放低频但实用的维护动作。
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Label("Config File", systemImage: "doc.text")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .help("RemoteDock host configuration file")
+        /// 底部维护条在窄窗口里允许换行，避免路径和按钮彼此挤压。
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                pathBlock
 
-                Text(configPath.isEmpty ? "Config path unavailable" : configPath)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                Spacer(minLength: 12)
+
+                actionButtons
             }
 
-            Spacer(minLength: 12)
-
-            Button(action: copyConfig) {
-                Label(didCopyConfig ? "Copied Config" : "Copy Config", systemImage: didCopyConfig ? "checkmark" : "curlybraces")
+            VStack(alignment: .leading, spacing: 10) {
+                pathBlock
+                actionButtons
             }
-            .buttonStyle(.bordered)
-            .help("Copy the full configuration JSON")
-
-            Button(action: copyPath) {
-                Label(didCopyPath ? "Copied" : "Copy Path", systemImage: didCopyPath ? "checkmark" : "doc.on.doc")
-            }
-            .buttonStyle(.bordered)
-            .disabled(configPath.isEmpty)
-            .help("Copy the config file path")
-
-            Button(action: reload) {
-                Label("Reload", systemImage: "arrow.clockwise")
-            }
-            .buttonStyle(.bordered)
-            .help("Reload hosts from disk")
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.vertical, isCompact ? 10 : 12)
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(.quaternary)
         }
+    }
+
+    private var pathBlock: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label("Config File", systemImage: "doc.text")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .help("RemoteDock host configuration file")
+
+            Text(configPath.isEmpty ? "Config path unavailable" : configPath)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+    }
+
+    private var actionButtons: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                copyConfigButton
+                copyPathButton
+                reloadButton
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    copyConfigButton
+                    copyPathButton
+                }
+
+                reloadButton
+            }
+        }
+    }
+
+    private var copyConfigButton: some View {
+        Button(action: copyConfig) {
+            Label(didCopyConfig ? "Copied Config" : "Copy Config", systemImage: didCopyConfig ? "checkmark" : "curlybraces")
+        }
+        .buttonStyle(.bordered)
+        .help("Copy the full configuration JSON")
+    }
+
+    private var copyPathButton: some View {
+        Button(action: copyPath) {
+            Label(didCopyPath ? "Copied" : "Copy Path", systemImage: didCopyPath ? "checkmark" : "doc.on.doc")
+        }
+        .buttonStyle(.bordered)
+        .disabled(configPath.isEmpty)
+        .help("Copy the config file path")
+    }
+
+    private var reloadButton: some View {
+        Button(action: reload) {
+            Label("Reload", systemImage: "arrow.clockwise")
+        }
+        .buttonStyle(.bordered)
+        .help("Reload hosts from disk")
     }
 }

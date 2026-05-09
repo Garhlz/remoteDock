@@ -60,26 +60,48 @@ struct HostCard: View {
                 moreMenu
             }
 
-            HStack(spacing: 10) {
-                primaryActionButton
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    primaryActionButton
+                    alternateOpenButton
+                }
 
-                alternateOpenButton
+                VStack(spacing: 10) {
+                    primaryActionButton
+                    alternateOpenButton
+                }
             }
 
             Divider()
 
-            HStack(spacing: 8) {
-                quickActionButtons
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    quickActionButtons
 
-                if showsTailscaleStatusAction {
-                    actionPill(
-                        title: "Local Tailscale",
-                        systemImage: "wave.3.right.circle",
-                        action: showTailscaleStatus
-                    )
+                    if showsTailscaleStatusAction {
+                        actionPill(
+                            title: "Local Tailscale",
+                            systemImage: "wave.3.right.circle",
+                            action: showTailscaleStatus
+                        )
+                    }
+
+                    Spacer(minLength: 0)
                 }
 
-                Spacer(minLength: 0)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        quickActionButtons
+                    }
+
+                    if showsTailscaleStatusAction {
+                        actionPill(
+                            title: "Local Tailscale",
+                            systemImage: "wave.3.right.circle",
+                            action: showTailscaleStatus
+                        )
+                    }
+                }
             }
             .buttonStyle(.bordered)
         }
@@ -342,18 +364,41 @@ struct HostCard: View {
         /// quick actions 只放高频且即时的动作：
         /// 复制 SSH、复制 IP、Ping。
         /// 更低频、更解释性的动作则放进 more menu。
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                sshCopyButton
+                ipCopyButton
+                pingButton
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    sshCopyButton
+                    ipCopyButton
+                }
+
+                pingButton
+            }
+        }
+    }
+
+    private var sshCopyButton: some View {
         actionPill(
             title: copiedLabel == "SSH" ? "Copied SSH" : "Copy SSH",
             systemImage: copiedLabel == "SSH" ? "checkmark" : "doc.on.doc",
             action: copySSHCommand
         )
+    }
 
+    private var ipCopyButton: some View {
         actionPill(
             title: copiedLabel == "IP" ? "Copied IP" : "Copy IP",
             systemImage: copiedLabel == "IP" ? "checkmark" : "network",
             action: copyIPAddress
         )
+    }
 
+    private var pingButton: some View {
         actionPill(
             title: status == .checking ? "Checking" : "Ping",
             systemImage: "wave.3.right",
