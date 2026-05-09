@@ -33,7 +33,8 @@ struct HostStoreTests {
                 address: "100.117.140.113",
                 port: 2222,
                 remoteDirectory: "/srv/project",
-                startupCommand: "exec zsh -l"
+                startupCommand: "exec zsh -l",
+                preferredOpenMode: .vscode
             )
         ]
 

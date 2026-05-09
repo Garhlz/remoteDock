@@ -13,6 +13,7 @@ struct RemoteHostTests {
 
         #expect(host.suggestedRemoteDirectory == "/home/elaine")
         #expect(host.effectiveRemoteDirectory == "/home/elaine")
+        #expect(host.effectiveOpenMode == .ghostty)
         #expect(host.isWindowsHost == false)
     }
 
@@ -160,6 +161,54 @@ struct RemoteHostTests {
     }
 
     @Test
+    func preferredOpenModeDefaultsToGhosttyAndCanBeCustomized() {
+        let defaultHost = RemoteHost(
+            name: "Arch",
+            username: "elaine",
+            address: "100.117.140.113"
+        )
+        let customizedHost = RemoteHost(
+            name: "Arch",
+            username: "elaine",
+            address: "100.117.140.113",
+            preferredOpenMode: .vscode
+        )
+
+        #expect(defaultHost.preferredOpenModeOrNil == nil)
+        #expect(defaultHost.effectiveOpenMode == .ghostty)
+        #expect(defaultHost.preferredAutoPingIntervalMinutesOrNil == nil)
+        #expect(defaultHost.effectiveAutoPingIntervalMinutes == RemoteHost.defaultAutoPingIntervalMinutes)
+        #expect(customizedHost.preferredOpenModeOrNil == .vscode)
+        #expect(customizedHost.effectiveOpenMode == .vscode)
+    }
+
+    @Test
+    func autoPingIntervalDefaultsAndNormalizes() {
+        let defaultHost = RemoteHost(
+            name: "Arch",
+            username: "elaine",
+            address: "100.117.140.113"
+        )
+        let customHost = RemoteHost(
+            name: "Arch",
+            username: "elaine",
+            address: "100.117.140.113",
+            autoPingIntervalMinutes: 15
+        )
+        let invalidHost = RemoteHost(
+            name: "Arch",
+            username: "elaine",
+            address: "100.117.140.113",
+            autoPingIntervalMinutes: 0
+        )
+
+        #expect(defaultHost.effectiveAutoPingIntervalMinutes == 5)
+        #expect(customHost.preferredAutoPingIntervalMinutesOrNil == 15)
+        #expect(customHost.effectiveAutoPingIntervalMinutes == 15)
+        #expect(invalidHost.preferredAutoPingIntervalMinutesOrNil == nil)
+    }
+
+    @Test
     func withRemoteDirectoryPreservesOtherFields() {
         let original = RemoteHost(
             id: UUID(),
@@ -206,16 +255,69 @@ struct RemoteHostTests {
     }
 
     @Test
+    func withPreferredOpenModePreservesOtherFields() {
+        let original = RemoteHost(
+            id: UUID(),
+            name: "Arch",
+            username: "elaine",
+            address: "100.117.140.113",
+            port: 2222,
+            remoteDirectory: "/home/elaine",
+            startupCommand: "exec zsh -l"
+        )
+
+        let updated = original.withPreferredOpenMode(.defaultTerminal)
+
+        #expect(updated.id == original.id)
+        #expect(updated.name == original.name)
+        #expect(updated.username == original.username)
+        #expect(updated.address == original.address)
+        #expect(updated.port == original.port)
+        #expect(updated.preferredRemoteDirectory == original.preferredRemoteDirectory)
+        #expect(updated.preferredStartupCommand == original.preferredStartupCommand)
+        #expect(updated.effectiveOpenMode == .defaultTerminal)
+    }
+
+    @Test
+    func withAutoPingIntervalPreservesOtherFields() {
+        let original = RemoteHost(
+            id: UUID(),
+            name: "Arch",
+            username: "elaine",
+            address: "100.117.140.113",
+            port: 2222,
+            remoteDirectory: "/home/elaine",
+            startupCommand: "exec zsh -l",
+            preferredOpenMode: .ghostty
+        )
+
+        let updated = original.withAutoPingIntervalMinutes(20)
+
+        #expect(updated.id == original.id)
+        #expect(updated.name == original.name)
+        #expect(updated.username == original.username)
+        #expect(updated.address == original.address)
+        #expect(updated.port == original.port)
+        #expect(updated.preferredRemoteDirectory == original.preferredRemoteDirectory)
+        #expect(updated.preferredStartupCommand == original.preferredStartupCommand)
+        #expect(updated.effectiveOpenMode == original.effectiveOpenMode)
+        #expect(updated.preferredAutoPingIntervalMinutesOrNil == 20)
+    }
+
+    @Test
     func fullDetailsTextIncludesPortInformation() {
         let host = RemoteHost(
             name: "Arch",
             username: "elaine",
             address: "100.117.140.113",
             port: 2222,
-            remoteDirectory: "/home/elaine"
+            remoteDirectory: "/home/elaine",
+            preferredOpenMode: .vscode
         )
 
         #expect(host.fullDetailsText.contains("Port: 2222"))
         #expect(host.fullDetailsText.contains("SSH Target: elaine@100.117.140.113"))
+        #expect(host.fullDetailsText.contains("Preferred Open Mode: VS Code"))
+        #expect(host.fullDetailsText.contains("Auto Ping Interval: 5 min"))
     }
 }

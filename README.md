@@ -16,6 +16,8 @@ RemoteDock 是一个小型 macOS SwiftUI 应用，用来快速连接个人常用
 - 一键复制主机 IP 地址。
 - 一键复制完整主机信息，包含名称、SSH 目标、远程目录和启动命令。
 - 支持为每台主机配置可选端口，适配非默认 SSH 端口。
+- 支持为每台主机配置首选打开方式，让主按钮优先使用 Ghostty、默认终端或 VS Code。
+- 支持为每台主机配置自动 Ping 间隔；留空时使用默认的 5 分钟心跳检查。
 - 打开 Ghostty 并启动 SSH 会话；Linux 会使用兼容的 `TERM=xterm-256color`，如果配置了远程目录，会在登录后进入该目录，也支持为每台主机配置自定义启动命令。
 - 使用系统默认 SSH URL 处理器打开默认终端，减少对 Ghostty 的耦合。
 - 打开 VS Code Remote - SSH 并进入主机的默认远程目录。
@@ -33,10 +35,12 @@ RemoteDock 是一个小型 macOS SwiftUI 应用，用来快速连接个人常用
 - 为每台主机配置默认远程目录，供 VS Code Remote 使用。
 - 为每台主机配置可选端口，供 SSH、默认终端和 VS Code Remote 使用。
 - 为每台主机配置可选的启动命令，覆盖默认 SSH 登录后的启动行为。
+- 为每台主机配置可选的自动 Ping 间隔，控制后台心跳检查频率。
 - 使用双栏布局：左侧主机列表，右侧详情与操作面板。
 - 左侧支持主机搜索和状态筛选，可按名称、用户名、地址、远程目录以及在线状态过滤。
 - 为每台主机显示最近一次检测时间，便于判断状态是否过期。
 - 为状态、操作和特殊标记增加 tooltip，降低图标理解成本。
+- 右侧详情页会把首选打开方式作为主按钮突出显示，并将其他打开方式整理为次级动作。
 - 统一使用结构化错误类型，并在界面层映射为明确的失败提示。
 - 将主机模型、配置读写、Ping、默认终端和 Tailscale 状态读取抽到 `RemoteDockCore` Swift Package，便于复用和后续测试。
 - `RemoteDockCore` 现已带有 Swift Testing 测试集，覆盖主机模型、配置读写、SSH 命令生成、默认终端 URL、Tailscale 状态和 Ping 执行层。
@@ -100,6 +104,21 @@ remoteDock/
 
 当前复制动作和大部分失败操作都会在顶部显示自动消失的反馈条，不再只依赖按钮文案变化或模态弹窗。
 
+应用启动后会先执行一次全量 Ping，之后再按每台主机的自动 Ping 间隔做后台检查；如果主机没有单独配置，就使用默认的 5 分钟。
+
+## 下一步规划
+
+当前更值得投入的方向，不是继续堆连接动作，而是把“设置集中化”和“长期使用体验”补完整。
+
+建议优先级：
+
+1. `Settings` 入口与全局选项：集中放置默认打开方式、全局心跳默认值、菜单栏显示等配置。
+2. 心跳策略补完：支持秒级间隔、`Never` / 仅手动检查，以及全局默认值和单主机覆盖。
+3. 快捷键：至少支持“按默认方式打开当前主机”。
+4. 左侧导航增强：支持简单分组，例如按系统类型、连接方式或自定义分组名。
+5. 复制配置动作：复制单主机 JSON 片段，并评估是否需要导出当前主机配置。
+6. SSH 密钥管理评估：优先复用系统 `ssh-agent` / Keychain，而不是在应用内直接托管私钥。
+
 ## 主机配置
 
 RemoteDock 会从本地 JSON 文件加载主机列表。首次启动时，如果配置文件不存在，应用会自动创建一个默认配置。
@@ -120,6 +139,8 @@ RemoteDock 会从本地 JSON 文件加载主机列表。首次启动时，如果
     "address": "100.117.140.113",
     "id": "00000000-0000-0000-0000-000000000001",
     "name": "Arch T480s",
+    "autoPingIntervalMinutes": 5,
+    "preferredOpenMode": "ghostty",
     "port": 22,
     "remoteDirectory": "/home/elaine",
     "startupCommand": "cd -- {remoteDirectory} && exec zsh -l",
@@ -130,7 +151,7 @@ RemoteDock 会从本地 JSON 文件加载主机列表。首次启动时，如果
 
 如果 JSON 格式损坏，RemoteDock 会在界面上显示错误，并临时回退到默认主机列表。它不会自动覆盖损坏的配置文件。
 
-主机也可以直接在 App 界面中新增、编辑、删除和排序。保存后会立即写回 `hosts.json`。如果目标机器使用非默认 SSH 端口，也可以直接填写 `port`。如果要使用 `Open in VS Code`，请为对应主机填写可访问的远程目录，例如 Linux 的 `/home/elaine/project` 或 Windows 的 `C:/Users/elaine/project`。
+主机也可以直接在 App 界面中新增、编辑、删除和排序。保存后会立即写回 `hosts.json`。如果目标机器使用非默认 SSH 端口，也可以直接填写 `port`。`preferredOpenMode` 可选值为 `ghostty`、`defaultTerminal` 和 `vscode`，它决定右侧详情页主按钮默认打开哪种连接方式。`autoPingIntervalMinutes` 可以覆盖默认的后台心跳检查间隔；留空时使用 5 分钟默认值。如果要使用 `Open in VS Code`，请为对应主机填写可访问的远程目录，例如 Linux 的 `/home/elaine/project` 或 Windows 的 `C:/Users/elaine/project`。
 
 如果某台主机有特殊 shell 或启动流程，也可以填写 `startupCommand`。这个命令会在 SSH 登录后直接执行，`{remoteDirectory}` 会被替换成当前主机配置中的目录。比如：
 

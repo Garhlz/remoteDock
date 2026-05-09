@@ -69,8 +69,10 @@ struct ContentView: View {
     @State private var hostBeingEdited: RemoteHost?
     @State private var isAddingHost = false
     @State private var isPingingAll = false
+    @State private var isSidebarControlsExpanded = false
     @State private var tailscaleStatusText: String?
     @State private var didRunInitialPing = false
+    @State private var didStartAutoPingLoop = false
 
     var body: some View {
         VStack(spacing: 14) {
@@ -94,6 +96,9 @@ struct ContentView: View {
         .frame(minWidth: 920, minHeight: 620)
         .task {
             loadHosts()
+        }
+        .task {
+            await startAutoPingLoopIfNeeded()
         }
         .onChange(of: searchText) { _, _ in
             syncSelection()
@@ -175,54 +180,84 @@ struct ContentView: View {
                 }
 
                 Spacer()
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        isSidebarControlsExpanded.toggle()
+                    }
+                } label: {
+                    Image(systemName: isSidebarControlsExpanded ? "chevron.up.circle" : "slider.horizontal.3")
+                        .imageScale(.medium)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help(isSidebarControlsExpanded ? "Hide search and filter" : "Show search and filter")
             }
             .padding(.horizontal, 14)
             .padding(.top, 12)
             .padding(.bottom, 10)
 
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-
-                TextField("Search hosts", text: $searchText)
-                    .textFieldStyle(.plain)
-
-                if !searchText.isEmpty {
-                    Button(action: {
-                        searchText = ""
-                    }) {
-                        Image(systemName: "xmark.circle.fill")
+            if isSidebarControlsExpanded {
+                VStack(spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
                             .foregroundStyle(.secondary)
+
+                        TextField("Search hosts", text: $searchText)
+                            .textFieldStyle(.plain)
+
+                        if !searchText.isEmpty {
+                            Button(action: {
+                                searchText = ""
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(Color.secondary.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .padding(.horizontal, 14)
-            .padding(.bottom, 12)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(Color.secondary.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
 
-            HStack(spacing: 8) {
-                Image(systemName: "line.3.horizontal.decrease.circle")
-                    .foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        Image(systemName: "line.3.horizontal.decrease.circle")
+                            .foregroundStyle(.secondary)
 
-                Picker("Status Filter", selection: $selectedFilter) {
-                    ForEach(HostFilter.allCases) { filter in
-                        Text(filter.rawValue).tag(filter)
+                        Picker("Status Filter", selection: $selectedFilter) {
+                            ForEach(HostFilter.allCases) { filter in
+                                Text(filter.rawValue).tag(filter)
+                            }
+                        }
+                        .pickerStyle(.menu)
+
+                        Spacer(minLength: 0)
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(Color.secondary.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
-                .pickerStyle(.menu)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 12)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            } else if !searchText.isEmpty || selectedFilter != .all {
+                HStack(spacing: 8) {
+                    if !searchText.isEmpty {
+                        collapsedControlTag(title: searchText, systemImage: "magnifyingglass")
+                    }
 
-                Spacer(minLength: 0)
+                    if selectedFilter != .all {
+                        collapsedControlTag(title: selectedFilter.rawValue, systemImage: "line.3.horizontal.decrease.circle")
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 12)
+                .transition(.opacity)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(Color.secondary.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .padding(.horizontal, 14)
-            .padding(.bottom, 12)
 
             Divider()
 
@@ -271,8 +306,12 @@ struct ContentView: View {
                         detailHeader(for: host)
 
                         HostCard(
+                            preferredOpenMode: host.effectiveOpenMode,
                             status: status(for: host),
                             copiedLabel: copiedFeedback[host.id],
+                            openPreferred: {
+                                openPreferred(for: host)
+                            },
                             copySSHCommand: {
                                 copy(host.sshCommand, label: "SSH", for: host)
                             },
@@ -563,6 +602,18 @@ struct ContentView: View {
     }
 
     @MainActor
+    private func openPreferred(for host: RemoteHost) {
+        switch host.effectiveOpenMode {
+        case .ghostty:
+            openSSHSession(for: host)
+        case .defaultTerminal:
+            openDefaultTerminalSession(for: host)
+        case .vscode:
+            openVSCodeRemote(for: host)
+        }
+    }
+
+    @MainActor
     private func openDefaultTerminalSession(for host: RemoteHost) {
         if let error = DefaultTerminalService.openSSHSession(for: host) {
             showFeedback(.error, error.localizedDescription)
@@ -627,6 +678,60 @@ struct ContentView: View {
         isPingingAll = false
     }
 
+    @MainActor
+    private func startAutoPingLoopIfNeeded() async {
+        guard !didStartAutoPingLoop else {
+            return
+        }
+
+        didStartAutoPingLoop = true
+
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 30_000_000_000)
+            await autoPingDueHosts()
+        }
+    }
+
+    @MainActor
+    private func autoPingDueHosts() async {
+        guard !hosts.isEmpty, !isPingingAll else {
+            return
+        }
+
+        let now = Date()
+        let dueHosts = hosts.filter { host in
+            guard status(for: host) != .checking else {
+                return false
+            }
+
+            guard let lastChecked = lastCheckedAt[host.id] else {
+                return false
+            }
+
+            let interval = TimeInterval(host.effectiveAutoPingIntervalMinutes * 60)
+            return now.timeIntervalSince(lastChecked) >= interval
+        }
+
+        guard !dueHosts.isEmpty else {
+            return
+        }
+
+        await withTaskGroup(of: (UUID, Bool).self) { group in
+            for host in dueHosts {
+                statuses[host.id] = .checking
+                group.addTask {
+                    let isOnline = await PingService.check(address: host.address)
+                    return (host.id, isOnline)
+                }
+            }
+
+            for await (hostID, isOnline) in group {
+                statuses[hostID] = isOnline ? .online : .offline
+                lastCheckedAt[hostID] = Date()
+            }
+        }
+    }
+
     private func status(for host: RemoteHost) -> HostStatus {
         statuses[host.id, default: .unknown]
     }
@@ -665,6 +770,17 @@ struct ContentView: View {
         .help("\(title): \(value)")
     }
 
+    private func collapsedControlTag(title: String, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(Color.secondary.opacity(0.08))
+            .clipShape(Capsule())
+    }
+
     private func detailHeader(for host: RemoteHost) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
@@ -692,6 +808,7 @@ struct ContentView: View {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 8) {
                     detailTag(title: host.username, systemImage: "person")
+                    detailTag(title: host.effectiveOpenMode.title, systemImage: host.effectiveOpenMode.systemImage)
                     detailTag(title: host.effectiveRemoteDirectory, systemImage: "folder")
 
                     if host.preferredStartupCommand != nil {
@@ -703,6 +820,7 @@ struct ContentView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     detailTag(title: host.username, systemImage: "person")
+                    detailTag(title: host.effectiveOpenMode.title, systemImage: host.effectiveOpenMode.systemImage)
                     detailTag(title: host.effectiveRemoteDirectory, systemImage: "folder")
 
                     if host.preferredStartupCommand != nil {
@@ -721,8 +839,15 @@ struct ContentView: View {
             detailGridRow(
                 leftTitle: "Username",
                 leftValue: host.username,
-                rightTitle: "Endpoint",
-                rightValue: host.port.map { "\(host.address):\($0)" } ?? host.address
+                rightTitle: "Preferred Open",
+                rightValue: host.effectiveOpenMode.title
+            )
+
+            detailGridRow(
+                leftTitle: "Endpoint",
+                leftValue: host.port.map { "\(host.address):\($0)" } ?? host.address,
+                rightTitle: "Auto Ping",
+                rightValue: "\(host.effectiveAutoPingIntervalMinutes) min"
             )
 
             detailGridRow(
@@ -741,9 +866,9 @@ struct ContentView: View {
         }
         .padding(20)
         .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay {
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: 12)
                 .stroke(.quaternary)
         }
     }
@@ -950,18 +1075,33 @@ private struct HostSidebarRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Circle()
-                .fill(status.color)
-                .frame(width: 9, height: 9)
+            RoundedRectangle(cornerRadius: 4)
+                .fill(isSelected ? Color.accentColor : Color.clear)
+                .frame(width: 4)
+
+            Image(systemName: host.effectiveOpenMode.systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isSelected ? .white : .secondary)
+                .frame(width: 20, height: 20)
+                .padding(6)
+                .background(isSelected ? Color.accentColor : Color.secondary.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(host.name)
-                    .font(.body.weight(.medium))
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(status.color)
+                        .frame(width: 8, height: 8)
+
+                    Text(host.name)
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(isSelected ? .primary : .primary)
+                        .lineLimit(1)
+                }
 
                 Text(host.displayAddress)
                     .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(isSelected ? Color.primary.opacity(0.72) : Color.secondary)
                     .lineLimit(1)
 
                 if let lastCheckedAt {
@@ -970,13 +1110,13 @@ private struct HostSidebarRow: View {
                         Text(lastCheckedAt, style: .relative)
                     }
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(isSelected ? Color.primary.opacity(0.62) : Color.secondary.opacity(0.72))
                     .lineLimit(1)
                     .help(lastCheckedAt.formatted(date: .complete, time: .standard))
                 } else {
                     Text("Not checked yet")
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(isSelected ? Color.primary.opacity(0.62) : Color.secondary.opacity(0.72))
                         .lineLimit(1)
                 }
             }
@@ -990,9 +1130,13 @@ private struct HostSidebarRow: View {
                     .help("This host runs a custom startup command after SSH login")
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 9)
         .background(isSelected ? Color.accentColor.opacity(0.14) : Color.clear)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(isSelected ? Color.accentColor.opacity(0.22) : Color.clear)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }

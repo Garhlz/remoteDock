@@ -8,6 +8,10 @@ public struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
     public let port: Int?
     public let remoteDirectory: String?
     public let startupCommand: String?
+    public let preferredOpenMode: PreferredOpenMode?
+    public let autoPingIntervalMinutes: Int?
+
+    public static let defaultAutoPingIntervalMinutes = 5
 
     public init(
         id: UUID = UUID(),
@@ -16,7 +20,9 @@ public struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
         address: String,
         port: Int? = nil,
         remoteDirectory: String? = nil,
-        startupCommand: String? = nil
+        startupCommand: String? = nil,
+        preferredOpenMode: PreferredOpenMode? = nil,
+        autoPingIntervalMinutes: Int? = nil
     ) {
         self.id = id
         self.name = name
@@ -25,6 +31,8 @@ public struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
         self.port = Self.normalizedPort(port)
         self.remoteDirectory = Self.normalizedRemoteDirectory(remoteDirectory)
         self.startupCommand = Self.normalizedStartupCommand(startupCommand)
+        self.preferredOpenMode = preferredOpenMode
+        self.autoPingIntervalMinutes = Self.normalizedAutoPingIntervalMinutes(autoPingIntervalMinutes)
     }
 
     public var sshCommand: String {
@@ -66,6 +74,8 @@ public struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
             "Address: \(address)",
             "Port: \(port.map(String.init) ?? "Default")",
             "SSH Target: \(sshTarget)",
+            "Preferred Open Mode: \(effectiveOpenMode.title)",
+            "Auto Ping Interval: \(effectiveAutoPingIntervalMinutes) min",
             "Remote Directory: \(effectiveRemoteDirectory)",
             "Startup Command: \(preferredStartupCommand ?? "Default behavior")"
         ]
@@ -78,6 +88,22 @@ public struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
 
     public var preferredStartupCommand: String? {
         Self.normalizedStartupCommand(startupCommand)
+    }
+
+    public var preferredOpenModeOrNil: PreferredOpenMode? {
+        preferredOpenMode
+    }
+
+    public var preferredAutoPingIntervalMinutesOrNil: Int? {
+        autoPingIntervalMinutes
+    }
+
+    public var effectiveOpenMode: PreferredOpenMode {
+        preferredOpenMode ?? .ghostty
+    }
+
+    public var effectiveAutoPingIntervalMinutes: Int {
+        autoPingIntervalMinutes ?? Self.defaultAutoPingIntervalMinutes
     }
 
     public var effectiveRemoteDirectory: String {
@@ -122,7 +148,9 @@ public struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
             address: address,
             port: port,
             remoteDirectory: remoteDirectory,
-            startupCommand: startupCommand
+            startupCommand: startupCommand,
+            preferredOpenMode: preferredOpenMode,
+            autoPingIntervalMinutes: autoPingIntervalMinutes
         )
     }
 
@@ -134,12 +162,50 @@ public struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
             address: address,
             port: port,
             remoteDirectory: remoteDirectory,
-            startupCommand: startupCommand
+            startupCommand: startupCommand,
+            preferredOpenMode: preferredOpenMode,
+            autoPingIntervalMinutes: autoPingIntervalMinutes
+        )
+    }
+
+    public func withPreferredOpenMode(_ preferredOpenMode: PreferredOpenMode?) -> RemoteHost {
+        RemoteHost(
+            id: id,
+            name: name,
+            username: username,
+            address: address,
+            port: port,
+            remoteDirectory: remoteDirectory,
+            startupCommand: startupCommand,
+            preferredOpenMode: preferredOpenMode,
+            autoPingIntervalMinutes: autoPingIntervalMinutes
+        )
+    }
+
+    public func withAutoPingIntervalMinutes(_ autoPingIntervalMinutes: Int?) -> RemoteHost {
+        RemoteHost(
+            id: id,
+            name: name,
+            username: username,
+            address: address,
+            port: port,
+            remoteDirectory: remoteDirectory,
+            startupCommand: startupCommand,
+            preferredOpenMode: preferredOpenMode,
+            autoPingIntervalMinutes: autoPingIntervalMinutes
         )
     }
 
     private static func normalizedPort(_ value: Int?) -> Int? {
         guard let value, (1 ... 65535).contains(value) else {
+            return nil
+        }
+
+        return value
+    }
+
+    private static func normalizedAutoPingIntervalMinutes(_ value: Int?) -> Int? {
+        guard let value, (1 ... 1440).contains(value) else {
             return nil
         }
 
