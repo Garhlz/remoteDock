@@ -10,14 +10,16 @@ struct HostStoreTests {
 
         let configURL = tempDirectory.appendingPathComponent("hosts.json")
 
-        let hosts = try HostStore.loadOrCreateDefaults(at: configURL)
+        let configuration = try HostStore.loadOrCreateConfiguration(at: configURL)
 
-        #expect(hosts == HostStore.defaultHosts)
+        #expect(configuration.hosts == HostStore.defaultHosts)
+        #expect(configuration.groups.isEmpty)
         #expect(FileManager.default.fileExists(atPath: configURL.path))
 
         let savedData = try Data(contentsOf: configURL)
-        let savedHosts = try JSONDecoder().decode([RemoteHost].self, from: savedData)
-        #expect(savedHosts == HostStore.defaultHosts)
+        let savedConfiguration = try JSONDecoder().decode(RemoteDockConfiguration.self, from: savedData)
+        #expect(savedConfiguration.hosts == HostStore.defaultHosts)
+        #expect(savedConfiguration.groups.isEmpty)
     }
 
     @Test
@@ -26,22 +28,25 @@ struct HostStoreTests {
         defer { removeItemIfExists(at: tempDirectory) }
 
         let configURL = tempDirectory.appendingPathComponent("hosts.json")
+        let group = HostGroup(name: "Servers")
         let hosts = [
             RemoteHost(
                 name: "Arch",
                 username: "elaine",
                 address: "100.117.140.113",
                 port: 2222,
+                groupID: group.id,
                 remoteDirectory: "/srv/project",
                 startupCommand: "exec zsh -l",
                 preferredOpenMode: .vscode
             )
         ]
+        let configuration = RemoteDockConfiguration(hosts: hosts, groups: [group])
 
-        try HostStore.save(hosts, to: configURL)
-        let loadedHosts = try HostStore.loadOrCreateDefaults(at: configURL)
+        try HostStore.save(configuration, to: configURL)
+        let loadedConfiguration = try HostStore.loadOrCreateConfiguration(at: configURL)
 
-        #expect(loadedHosts == hosts)
+        #expect(loadedConfiguration == configuration)
     }
 
     @Test
@@ -67,8 +72,8 @@ struct HostStoreTests {
         #expect(migratedHosts[0].preferredRemoteDirectory == "/home/elaine")
 
         let persistedData = try Data(contentsOf: configURL)
-        let persistedHosts = try JSONDecoder().decode([RemoteHost].self, from: persistedData)
-        #expect(persistedHosts[0].preferredRemoteDirectory == "/home/elaine")
+        let persistedConfiguration = try JSONDecoder().decode(RemoteDockConfiguration.self, from: persistedData)
+        #expect(persistedConfiguration.hosts[0].preferredRemoteDirectory == "/home/elaine")
     }
 
     @Test
@@ -93,6 +98,59 @@ struct HostStoreTests {
 
         #expect(migratedHosts.count == 1)
         #expect(migratedHosts[0].preferredStartupCommand == #"call "%USERPROFILE%\bin\remote.cmd" "{remoteDirectory}""#)
+    }
+
+    @Test
+    func loadOrCreateConfigurationMigratesLegacyHostsArrayToConfigurationDocument() throws {
+        let tempDirectory = makeTemporaryDirectory()
+        defer { removeItemIfExists(at: tempDirectory) }
+
+        let configURL = tempDirectory.appendingPathComponent("hosts.json")
+        let oldHosts = [
+            RemoteHost(
+                name: "Arch T480s",
+                username: "elaine",
+                address: "100.117.140.113"
+            )
+        ]
+
+        let data = try JSONEncoder().encode(oldHosts)
+        try data.write(to: configURL)
+
+        let configuration = try HostStore.loadOrCreateConfiguration(at: configURL)
+        let persistedData = try Data(contentsOf: configURL)
+        let persistedConfiguration = try JSONDecoder().decode(RemoteDockConfiguration.self, from: persistedData)
+
+        #expect(configuration.groups.isEmpty)
+        #expect(configuration.hosts.count == 1)
+        #expect(persistedConfiguration == configuration)
+    }
+
+    @Test
+    func loadOrCreateConfigurationClearsDanglingGroupIDs() throws {
+        let tempDirectory = makeTemporaryDirectory()
+        defer { removeItemIfExists(at: tempDirectory) }
+
+        let configURL = tempDirectory.appendingPathComponent("hosts.json")
+        let missingGroupID = UUID()
+        let configuration = RemoteDockConfiguration(
+            hosts: [
+                RemoteHost(
+                    name: "Arch",
+                    username: "elaine",
+                    address: "100.117.140.113",
+                    groupID: missingGroupID
+                )
+            ],
+            groups: []
+        )
+
+        let data = try JSONEncoder().encode(configuration)
+        try data.write(to: configURL)
+
+        let migratedConfiguration = try HostStore.loadOrCreateConfiguration(at: configURL)
+
+        #expect(migratedConfiguration.hosts[0].groupID == nil)
     }
 
     @Test

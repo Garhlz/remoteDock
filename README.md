@@ -16,15 +16,22 @@ RemoteDock 是一个小型 macOS SwiftUI 应用，用来快速连接个人常用
 - 一键复制主机 IP 地址。
 - 一键复制完整主机信息，包含名称、SSH 目标、远程目录和启动命令。
 - 支持为每台主机配置可选端口，适配非默认 SSH 端口。
+- 支持为主机创建用户自定义分组，并在左侧按分组展示。
+- 支持创建、重命名、删除和排序分组；删除分组时主机会自动回到未分组状态。
 - 支持为每台主机配置首选打开方式，让主按钮优先使用 Ghostty、默认终端或 VS Code。
-- 支持为每台主机配置自动 Ping 间隔；留空时使用默认的 5 分钟心跳检查。
+- 支持为每台主机配置自动 Ping 间隔，或显式设为 `Never`；留空时使用全局心跳策略。
+- 支持通过 `Settings` 配置全局默认打开方式、全局心跳模式（秒级、分钟级或仅手动）以及启动时是否自动检测。
+- 支持 App 级快捷操作：可通过菜单命令和快捷键快速打开或 Ping 当前选中的主机，并可在 `Settings` 中切换预设快捷键或禁用。
+- 支持菜单栏图标，可在不打开主窗口的情况下快速查看主机并执行核心操作。
 - 打开 Ghostty 并启动 SSH 会话；Linux 会使用兼容的 `TERM=xterm-256color`，如果配置了远程目录，会在登录后进入该目录，也支持为每台主机配置自定义启动命令。
 - 使用系统默认 SSH URL 处理器打开默认终端，减少对 Ghostty 的耦合。
 - 打开 VS Code Remote - SSH 并进入主机的默认远程目录。
 - 对 Tailscale 主机显示 `Local Tailscale` 操作，查看本机 `tailscale status` 输出，并支持复制结果。
 - Ping 主机并显示 Online、Offline 或 Checking 状态。
+- 为在线主机显示平均延迟，使用系统 `ping` 的 3 包采样结果。
 - 一键 Ping 所有主机。
 - 启动后自动执行一次全量 Ping，快速得到初始在线状态。
+- Ping 检查默认会在短时间内最多重试 3 次，单次采样使用 3 个 ICMP 包，并以这一轮的平均 RTT 作为延迟显示结果。
 - 当复制、打开终端或读取状态失败时，在界面顶部显示短暂反馈条。
 - 支持 Tailscale IP，也支持任何当前网络可访问的主机地址。
 - 从本地 JSON 配置文件加载主机列表。
@@ -38,12 +45,13 @@ RemoteDock 是一个小型 macOS SwiftUI 应用，用来快速连接个人常用
 - 为每台主机配置可选的自动 Ping 间隔，控制后台心跳检查频率。
 - 使用双栏布局：左侧主机列表，右侧详情与操作面板。
 - 左侧支持主机搜索和状态筛选，可按名称、用户名、地址、远程目录以及在线状态过滤。
+- 左侧搜索和筛选区的展开状态会持久化保存，并可在 `Settings` 中设置默认展开。
 - 为每台主机显示最近一次检测时间，便于判断状态是否过期。
 - 为状态、操作和特殊标记增加 tooltip，降低图标理解成本。
 - 右侧详情页会把首选打开方式作为主按钮突出显示，并将其他打开方式整理为次级动作。
 - 统一使用结构化错误类型，并在界面层映射为明确的失败提示。
 - 将主机模型、配置读写、Ping、默认终端和 Tailscale 状态读取抽到 `RemoteDockCore` Swift Package，便于复用和后续测试。
-- `RemoteDockCore` 现已带有 Swift Testing 测试集，覆盖主机模型、配置读写、SSH 命令生成、默认终端 URL、Tailscale 状态和 Ping 执行层。
+- `RemoteDockCore` 现已带有 Swift Testing 测试集，覆盖主机模型、配置读写、SSH 命令生成、默认终端 URL、Tailscale 状态以及带延迟解析的 Ping 执行层。
 
 ## 项目结构
 
@@ -53,8 +61,10 @@ remoteDock/
 ├── Sources/
 │   └── RemoteDockCore/
 │       ├── DefaultTerminalService.swift
+│       ├── HostGroup.swift
 │       ├── HostStore.swift
 │       ├── PingService.swift
+│       ├── RemoteDockConfiguration.swift
 │       ├── RemoteHost.swift
 │       ├── SSHCommandBuilder.swift
 │       ├── SSHURLBuilder.swift
@@ -79,6 +89,7 @@ remoteDock/
 │   │   └── VSCodeService.swift
 │   ├── Views/
 │   │   ├── HostCard.swift
+│   │   ├── GroupManagerView.swift
 │   │   └── HostEditorView.swift
 │   └── Assets.xcassets
 ├── README.md
@@ -91,7 +102,7 @@ remoteDock/
 
 当前版本使用双栏桌面工具布局：
 
-- 左侧：主机导航列表，支持搜索和选择。
+- 左侧：主机导航列表，支持搜索、状态筛选、自定义分组和选择。
 - 右侧：当前主机的详情页，包含状态、操作按钮和连接配置。
 - 顶部：概览统计和全局操作。
 - 底部：配置文件路径与重新加载入口。
@@ -100,11 +111,35 @@ remoteDock/
 
 其中 `Local Tailscale` 只会在地址看起来属于 Tailscale 网络的主机上显示。这个按钮展示的是本机的 `tailscale status`，用于快速确认当前 Mac 是否已经连上 tailnet，不代表远端主机自身状态。
 
-左侧列表现在还支持按状态筛选 `All / Online / Offline / Unchecked`，并显示每台主机的 `Last checked` 相对时间。
+左侧列表现在还支持按状态筛选 `All / Online / Offline / Unchecked`，显示每台主机的 `Last checked` 相对时间和最近一次平均延迟，并按你定义的分组展示主机。每台主机都可以快速切换到某个分组，或回到 `Ungrouped`。
 
 当前复制动作和大部分失败操作都会在顶部显示自动消失的反馈条，不再只依赖按钮文案变化或模态弹窗。
 
-应用启动后会先执行一次全量 Ping，之后再按每台主机的自动 Ping 间隔做后台检查；如果主机没有单独配置，就使用默认的 5 分钟。
+应用启动后会先执行一次全量 Ping，之后再按每台主机的自动 Ping 间隔做后台检查；如果主机没有单独配置，就使用默认的 5 分钟。每轮延迟检测会发送 3 个 ICMP 包，并使用该轮 `avg RTT` 作为界面上的延迟值，因此会比单包结果稳定一些。
+
+现在应用还提供了一个基础 `Settings` 面板，用于集中管理全局默认打开方式、全局心跳模式、启动时自动检测，以及左侧搜索/筛选区的默认展开状态。单主机配置仍然可以覆盖这些全局默认值，也可以单独设为 `Never` 来禁用后台心跳。
+
+在 App 菜单中还增加了 `RemoteDock` 命令组，快捷键可在 `Settings` 中切换：
+
+- `Shift + Command + O`：按当前主机的默认方式打开
+- `Shift + Command + P`：Ping 当前选中的主机
+
+如果启用了菜单栏图标，菜单栏入口会显示：
+
+- `Show Main Window`
+- 主机数量与在线状态摘要
+- `Ping All Hosts`
+- 按左侧相同的自定义分组显示主机，并为未分组主机保留 `Ungrouped`
+- 每台主机的快捷操作菜单
+  - 按默认方式打开
+  - Ping
+  - 复制 SSH 命令
+  - 复制主机详情
+  - 当前在线状态
+  - 最近检测时间
+  - 最近一次平均延迟
+- `Reload Hosts`
+- `Quit RemoteDock`
 
 ## 下一步规划
 
@@ -115,7 +150,7 @@ remoteDock/
 1. `Settings` 入口与全局选项：集中放置默认打开方式、全局心跳默认值、菜单栏显示等配置。
 2. 心跳策略补完：支持秒级间隔、`Never` / 仅手动检查，以及全局默认值和单主机覆盖。
 3. 快捷键：至少支持“按默认方式打开当前主机”。
-4. 左侧导航增强：支持简单分组，例如按系统类型、连接方式或自定义分组名。
+4. 延迟展示继续打磨：评估是否需要对最近几次测量做滚动平均，而不只是显示当前一轮 3 包采样的 `avg RTT`。
 5. 复制配置动作：复制单主机 JSON 片段，并评估是否需要导出当前主机配置。
 6. SSH 密钥管理评估：优先复用系统 `ssh-agent` / Keychain，而不是在应用内直接托管私钥。
 
@@ -131,27 +166,38 @@ RemoteDock 会从本地 JSON 文件加载主机列表。首次启动时，如果
 
 也可以在应用窗口底部直接查看并复制当前配置路径。
 
+当前配置文件已经是一个文档对象，而不再是单纯的主机数组。旧版本只有 `[RemoteHost]` 的 `hosts.json` 会在下次读取时自动迁移。
+
 配置示例：
 
 ```json
-[
-  {
-    "address": "100.117.140.113",
-    "id": "00000000-0000-0000-0000-000000000001",
-    "name": "Arch T480s",
-    "autoPingIntervalMinutes": 5,
-    "preferredOpenMode": "ghostty",
-    "port": 22,
-    "remoteDirectory": "/home/elaine",
-    "startupCommand": "cd -- {remoteDirectory} && exec zsh -l",
-    "username": "elaine"
-  }
-]
+{
+  "groups": [
+    {
+      "id": "11111111-1111-1111-1111-111111111111",
+      "name": "Lab"
+    }
+  ],
+  "hosts": [
+    {
+      "address": "100.117.140.113",
+      "autoPingIntervalMinutes": 5,
+      "groupID": "11111111-1111-1111-1111-111111111111",
+      "id": "00000000-0000-0000-0000-000000000001",
+      "name": "Arch T480s",
+      "preferredOpenMode": "ghostty",
+      "port": 22,
+      "remoteDirectory": "/home/elaine",
+      "startupCommand": "cd -- {remoteDirectory} && exec zsh -l",
+      "username": "elaine"
+    }
+  ]
+}
 ```
 
 如果 JSON 格式损坏，RemoteDock 会在界面上显示错误，并临时回退到默认主机列表。它不会自动覆盖损坏的配置文件。
 
-主机也可以直接在 App 界面中新增、编辑、删除和排序。保存后会立即写回 `hosts.json`。如果目标机器使用非默认 SSH 端口，也可以直接填写 `port`。`preferredOpenMode` 可选值为 `ghostty`、`defaultTerminal` 和 `vscode`，它决定右侧详情页主按钮默认打开哪种连接方式。`autoPingIntervalMinutes` 可以覆盖默认的后台心跳检查间隔；留空时使用 5 分钟默认值。如果要使用 `Open in VS Code`，请为对应主机填写可访问的远程目录，例如 Linux 的 `/home/elaine/project` 或 Windows 的 `C:/Users/elaine/project`。
+主机也可以直接在 App 界面中新增、编辑、删除和排序。分组同样可以在界面中创建、重命名、删除和排序。保存后会立即写回 `hosts.json`。如果目标机器使用非默认 SSH 端口，也可以直接填写 `port`。`preferredOpenMode` 可选值为 `ghostty`、`defaultTerminal` 和 `vscode`，它决定右侧详情页主按钮默认打开哪种连接方式。`autoPingIntervalMinutes` 可以覆盖默认的后台心跳检查间隔；留空时使用全局默认值。如果要使用 `Open in VS Code`，请为对应主机填写可访问的远程目录，例如 Linux 的 `/home/elaine/project` 或 Windows 的 `C:/Users/elaine/project`。
 
 如果某台主机有特殊 shell 或启动流程，也可以填写 `startupCommand`。这个命令会在 SSH 登录后直接执行，`{remoteDirectory}` 会被替换成当前主机配置中的目录。比如：
 

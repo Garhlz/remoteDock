@@ -178,6 +178,7 @@ struct RemoteHostTests {
         #expect(defaultHost.effectiveOpenMode == .ghostty)
         #expect(defaultHost.preferredAutoPingIntervalMinutesOrNil == nil)
         #expect(defaultHost.effectiveAutoPingIntervalMinutes == RemoteHost.defaultAutoPingIntervalMinutes)
+        #expect(defaultHost.preferredAutoPingDisabledOrNil == false)
         #expect(customizedHost.preferredOpenModeOrNil == .vscode)
         #expect(customizedHost.effectiveOpenMode == .vscode)
     }
@@ -209,13 +210,29 @@ struct RemoteHostTests {
     }
 
     @Test
+    func autoPingCanBeDisabledPerHost() {
+        let host = RemoteHost(
+            name: "Arch",
+            username: "elaine",
+            address: "100.117.140.113",
+            autoPingDisabled: true
+        )
+
+        #expect(host.preferredAutoPingDisabledOrNil)
+        #expect(host.effectiveAutoPingDescription == "Never")
+        #expect(host.preferredAutoPingIntervalMinutesOrNil == nil)
+    }
+
+    @Test
     func withRemoteDirectoryPreservesOtherFields() {
+        let groupID = UUID()
         let original = RemoteHost(
             id: UUID(),
             name: "Arch",
             username: "elaine",
             address: "100.117.140.113",
             port: 2222,
+            groupID: groupID,
             remoteDirectory: "/home/elaine",
             startupCommand: "exec zsh -l"
         )
@@ -227,18 +244,21 @@ struct RemoteHostTests {
         #expect(updated.username == original.username)
         #expect(updated.address == original.address)
         #expect(updated.port == original.port)
+        #expect(updated.groupID == groupID)
         #expect(updated.preferredRemoteDirectory == "/srv/project")
         #expect(updated.preferredStartupCommand == original.preferredStartupCommand)
     }
 
     @Test
     func withStartupCommandPreservesOtherFields() {
+        let groupID = UUID()
         let original = RemoteHost(
             id: UUID(),
             name: "Arch",
             username: "elaine",
             address: "100.117.140.113",
             port: 2222,
+            groupID: groupID,
             remoteDirectory: "/home/elaine",
             startupCommand: "exec zsh -l"
         )
@@ -250,6 +270,7 @@ struct RemoteHostTests {
         #expect(updated.username == original.username)
         #expect(updated.address == original.address)
         #expect(updated.port == original.port)
+        #expect(updated.groupID == groupID)
         #expect(updated.preferredRemoteDirectory == original.preferredRemoteDirectory)
         #expect(updated.preferredStartupCommand == "cd /srv/project && exec bash -l")
     }
@@ -302,6 +323,60 @@ struct RemoteHostTests {
         #expect(updated.preferredStartupCommand == original.preferredStartupCommand)
         #expect(updated.effectiveOpenMode == original.effectiveOpenMode)
         #expect(updated.preferredAutoPingIntervalMinutesOrNil == 20)
+        #expect(updated.preferredAutoPingDisabledOrNil == false)
+    }
+
+    @Test
+    func withAutoPingDisabledPreservesOtherFields() {
+        let original = RemoteHost(
+            id: UUID(),
+            name: "Arch",
+            username: "elaine",
+            address: "100.117.140.113",
+            port: 2222,
+            remoteDirectory: "/home/elaine",
+            startupCommand: "exec zsh -l",
+            preferredOpenMode: .ghostty
+        )
+
+        let updated = original.withAutoPingDisabled(true)
+
+        #expect(updated.id == original.id)
+        #expect(updated.name == original.name)
+        #expect(updated.username == original.username)
+        #expect(updated.address == original.address)
+        #expect(updated.port == original.port)
+        #expect(updated.preferredRemoteDirectory == original.preferredRemoteDirectory)
+        #expect(updated.preferredStartupCommand == original.preferredStartupCommand)
+        #expect(updated.effectiveOpenMode == original.effectiveOpenMode)
+        #expect(updated.preferredAutoPingDisabledOrNil)
+    }
+
+    @Test
+    func withGroupIDPreservesOtherFields() {
+        let original = RemoteHost(
+            id: UUID(),
+            name: "Arch",
+            username: "elaine",
+            address: "100.117.140.113",
+            port: 2222,
+            remoteDirectory: "/home/elaine",
+            startupCommand: "exec zsh -l",
+            preferredOpenMode: .ghostty
+        )
+        let groupID = UUID()
+
+        let updated = original.withGroupID(groupID)
+
+        #expect(updated.id == original.id)
+        #expect(updated.name == original.name)
+        #expect(updated.username == original.username)
+        #expect(updated.address == original.address)
+        #expect(updated.port == original.port)
+        #expect(updated.groupID == groupID)
+        #expect(updated.preferredRemoteDirectory == original.preferredRemoteDirectory)
+        #expect(updated.preferredStartupCommand == original.preferredStartupCommand)
+        #expect(updated.effectiveOpenMode == original.effectiveOpenMode)
     }
 
     @Test

@@ -9,35 +9,61 @@ import SwiftUI
 import RemoteDockCore
 
 struct HostEditorView: View {
+    private enum OpenModeSelection: String, CaseIterable, Identifiable {
+        case useDefault
+        case ghostty
+        case defaultTerminal
+        case vscode
+
+        var id: String { rawValue }
+    }
+
+    private enum AutoPingSelection: String, CaseIterable, Identifiable {
+        case useGlobal
+        case customMinutes
+        case never
+
+        var id: String { rawValue }
+    }
+
     let title: String
     let originalHost: RemoteHost?
+    let availableGroups: [HostGroup]
     let save: (RemoteHost) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(AppSettings.defaultOpenModeKey) private var defaultOpenModeRawValue = AppSettings.defaultOpenMode.rawValue
+    @AppStorage(AppSettings.defaultAutoPingModeKey) private var defaultAutoPingModeRawValue = AppSettings.defaultAutoPingMode.rawValue
+    @AppStorage(AppSettings.defaultAutoPingIntervalValueKey) private var defaultAutoPingIntervalValue = AppSettings.defaultAutoPingIntervalValue
     @State private var name: String
     @State private var username: String
     @State private var address: String
     @State private var port: String
+    @State private var selectedGroupID: UUID?
+    @State private var autoPingSelection: AutoPingSelection
     @State private var autoPingIntervalMinutes: String
     @State private var remoteDirectory: String
     @State private var startupCommand: String
-    @State private var preferredOpenMode: PreferredOpenMode
+    @State private var openModeSelection: OpenModeSelection
     @State private var validationMessage: String?
     private let startupCommandPlaceholder: String
 
-    init(title: String, host: RemoteHost?, save: @escaping (RemoteHost) -> Void) {
+    init(title: String, host: RemoteHost?, availableGroups: [HostGroup], save: @escaping (RemoteHost) -> Void) {
         self.title = title
         self.originalHost = host
+        self.availableGroups = availableGroups
         self.save = save
         self.startupCommandPlaceholder = host?.suggestedStartupCommand ?? #"call "%USERPROFILE%\bin\remote.cmd" "{remoteDirectory}""#
         _name = State(initialValue: host?.name ?? "")
         _username = State(initialValue: host?.username ?? "")
         _address = State(initialValue: host?.address ?? "")
         _port = State(initialValue: host?.port.map(String.init) ?? "")
+        _selectedGroupID = State(initialValue: host?.groupID)
+        _autoPingSelection = State(initialValue: Self.autoPingSelection(for: host))
         _autoPingIntervalMinutes = State(initialValue: host?.preferredAutoPingIntervalMinutesOrNil.map(String.init) ?? "")
         _remoteDirectory = State(initialValue: host?.remoteDirectory ?? "")
         _startupCommand = State(initialValue: host?.startupCommand ?? "")
-        _preferredOpenMode = State(initialValue: host?.effectiveOpenMode ?? .ghostty)
+        _openModeSelection = State(initialValue: Self.selection(for: host?.preferredOpenModeOrNil))
     }
 
     var body: some View {
@@ -51,25 +77,55 @@ struct HostEditorView: View {
                     TextField("Username", text: $username)
                     TextField("Address", text: $address)
                     TextField("Port", text: $port, prompt: Text("22"))
-                }
 
-                Section("Open") {
-                    LabeledContent("Open Mode") {
-                        Picker("Open Mode", selection: $preferredOpenMode) {
-                            ForEach(PreferredOpenMode.allCases) { mode in
-                                Text(mode.title).tag(mode)
+                    LabeledContent("Group") {
+                        Picker("Group", selection: $selectedGroupID) {
+                            Text("Ungrouped").tag(UUID?.none)
+
+                            ForEach(availableGroups) { group in
+                                Text(group.name).tag(group.id as UUID?)
                             }
                         }
                         .labelsHidden()
                         .pickerStyle(.menu)
-                        .frame(width: 170, alignment: .trailing)
+                        .frame(width: 200, alignment: .trailing)
+                    }
+                }
+
+                Section("Open") {
+                    LabeledContent("Open Mode") {
+                        Picker("Open Mode", selection: $openModeSelection) {
+                            Text("Use Global Default").tag(OpenModeSelection.useDefault)
+
+                            Divider()
+
+                            ForEach(OpenModeSelection.allCases.filter { $0 != .useDefault }, id: \.self) { mode in
+                                Text(title(for: mode)).tag(mode)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(width: 200, alignment: .trailing)
                     }
 
-                    TextField(
-                        "Auto Ping Interval (min)",
-                        text: $autoPingIntervalMinutes,
-                        prompt: Text("\(RemoteHost.defaultAutoPingIntervalMinutes)")
-                    )
+                    LabeledContent("Auto Ping") {
+                        Picker("Auto Ping", selection: $autoPingSelection) {
+                            Text("Use Global").tag(AutoPingSelection.useGlobal)
+                            Text("Custom Interval").tag(AutoPingSelection.customMinutes)
+                            Text("Never").tag(AutoPingSelection.never)
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(width: 200, alignment: .trailing)
+                    }
+
+                    if autoPingSelection == .customMinutes {
+                        TextField(
+                            "Auto Ping Interval (min)",
+                            text: $autoPingIntervalMinutes,
+                            prompt: Text(hostAutoPingPrompt)
+                        )
+                    }
                     TextField("Remote Directory", text: $remoteDirectory, prompt: Text("/home/elaine"))
                     TextField("Startup Command", text: $startupCommand, prompt: Text(startupCommandPlaceholder))
                 }
@@ -82,7 +138,8 @@ struct HostEditorView: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Preferred Open Mode controls the primary action in the host detail view.")
-                Text("Auto Ping Interval controls how often this host is checked in the background. Leave it empty to use the default.")
+                Text("Use Global Default currently resolves to \(resolvedDefaultOpenMode.title).")
+                Text("Auto Ping controls how often this host is checked in the background. Use Global follows \(globalHeartbeatDescription), and Never disables background checks for this host.")
                 Text("Remote Directory is used by VS Code Remote and can be left empty for now.")
                 Text("Startup Command is optional. It runs after SSH login, and you can use {remoteDirectory} as a placeholder.")
             }
@@ -156,10 +213,12 @@ struct HostEditorView: View {
             username: trimmedUsername,
             address: trimmedAddress,
             port: parsedPort(from: trimmedPort),
+            groupID: selectedGroupID,
             remoteDirectory: trimmedRemoteDirectory,
             startupCommand: trimmedStartupCommand,
-            preferredOpenMode: preferredOpenMode,
-            autoPingIntervalMinutes: parsedAutoPingIntervalMinutes(from: trimmedAutoPingIntervalMinutes)
+            preferredOpenMode: preferredOpenMode(from: openModeSelection),
+            autoPingIntervalMinutes: parsedAutoPingIntervalMinutes(from: trimmedAutoPingIntervalMinutes),
+            autoPingDisabled: autoPingSelection == .never ? true : nil
         )
 
         save(host)
@@ -191,7 +250,7 @@ struct HostEditorView: View {
     }
 
     private func isValidAutoPingIntervalMinutes(_ value: String) -> Bool {
-        value.isEmpty || parsedAutoPingIntervalMinutes(from: value) != nil
+        autoPingSelection != .customMinutes || parsedAutoPingIntervalMinutes(from: value) != nil
     }
 
     private func parsedAutoPingIntervalMinutes(from value: String) -> Int? {
@@ -208,5 +267,82 @@ struct HostEditorView: View {
 
     private func isValidStartupCommand(_ value: String) -> Bool {
         !value.contains(where: \.isNewline)
+    }
+
+    private var resolvedDefaultOpenMode: PreferredOpenMode {
+        PreferredOpenMode(rawValue: defaultOpenModeRawValue) ?? AppSettings.defaultOpenMode
+    }
+
+    private var resolvedDefaultAutoPingMode: AppSettings.AutoPingMode {
+        AppSettings.effectiveAutoPingMode(rawValue: defaultAutoPingModeRawValue)
+    }
+
+    private var globalHeartbeatDescription: String {
+        AppSettings.heartbeatDescription(
+            mode: resolvedDefaultAutoPingMode,
+            value: defaultAutoPingIntervalValue
+        )
+    }
+
+    private var hostAutoPingPrompt: String {
+        switch resolvedDefaultAutoPingMode {
+        case .seconds:
+            "Use global (\(globalHeartbeatDescription))"
+        case .minutes:
+            "Use global (\(globalHeartbeatDescription))"
+        case .manual:
+            "Manual only unless overridden"
+        }
+    }
+
+    private static func autoPingSelection(for host: RemoteHost?) -> AutoPingSelection {
+        if host?.preferredAutoPingDisabledOrNil == true {
+            return .never
+        }
+
+        if host?.preferredAutoPingIntervalMinutesOrNil != nil {
+            return .customMinutes
+        }
+
+        return .useGlobal
+    }
+
+    private func preferredOpenMode(from selection: OpenModeSelection) -> PreferredOpenMode? {
+        switch selection {
+        case .useDefault:
+            nil
+        case .ghostty:
+            .ghostty
+        case .defaultTerminal:
+            .defaultTerminal
+        case .vscode:
+            .vscode
+        }
+    }
+
+    private static func selection(for mode: PreferredOpenMode?) -> OpenModeSelection {
+        switch mode {
+        case nil:
+            .useDefault
+        case .ghostty:
+            .ghostty
+        case .defaultTerminal:
+            .defaultTerminal
+        case .vscode:
+            .vscode
+        }
+    }
+
+    private func title(for selection: OpenModeSelection) -> String {
+        switch selection {
+        case .useDefault:
+            "Use Global Default"
+        case .ghostty:
+            PreferredOpenMode.ghostty.title
+        case .defaultTerminal:
+            PreferredOpenMode.defaultTerminal.title
+        case .vscode:
+            PreferredOpenMode.vscode.title
+        }
     }
 }

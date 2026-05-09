@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import RemoteDockCore
 
+@Suite(.serialized)
 struct TailscaleServiceTests {
     @Test
     func executablePathUsesFirstAvailableCandidate() {

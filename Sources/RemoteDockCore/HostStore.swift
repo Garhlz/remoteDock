@@ -53,25 +53,41 @@ public enum HostStore {
     }
 
     public static func loadOrCreateDefaults() throws -> [RemoteHost] {
-        try loadOrCreateDefaults(at: configFileURL)
+        try loadOrCreateConfiguration().hosts
     }
 
     static func loadOrCreateDefaults(at url: URL) throws -> [RemoteHost] {
+        try loadOrCreateConfiguration(at: url).hosts
+    }
+
+    public static func loadOrCreateConfiguration() throws -> RemoteDockConfiguration {
+        try loadOrCreateConfiguration(at: configFileURL)
+    }
+
+    static func loadOrCreateConfiguration(at url: URL) throws -> RemoteDockConfiguration {
         guard FileManager.default.fileExists(atPath: url.path) else {
-            try save(defaultHosts, to: url)
-            return defaultHosts
+            let defaultConfiguration = RemoteDockConfiguration(hosts: defaultHosts)
+            try save(defaultConfiguration, to: url)
+            return defaultConfiguration
         }
 
         do {
             let data = try Data(contentsOf: url)
-            let hosts = try JSONDecoder().decode([RemoteHost].self, from: data)
-            let normalizedHosts = migrateDefaultsIfNeeded(in: hosts)
 
-            if normalizedHosts != hosts {
-                try save(normalizedHosts, to: url)
+            if let configuration = try? JSONDecoder().decode(RemoteDockConfiguration.self, from: data) {
+                let normalizedConfiguration = migrateDefaultsIfNeeded(in: configuration)
+
+                if normalizedConfiguration != configuration {
+                    try save(normalizedConfiguration, to: url)
+                }
+
+                return normalizedConfiguration
             }
 
-            return normalizedHosts
+            let legacyHosts = try JSONDecoder().decode([RemoteHost].self, from: data)
+            let normalizedConfiguration = migrateDefaultsIfNeeded(in: RemoteDockConfiguration(hosts: legacyHosts))
+            try save(normalizedConfiguration, to: url)
+            return normalizedConfiguration
         } catch let error as DecodingError {
             throw HostStoreError.decodeFailed(url, error)
         } catch {
@@ -80,10 +96,18 @@ public enum HostStore {
     }
 
     public static func save(_ hosts: [RemoteHost]) throws {
-        try save(hosts, to: configFileURL)
+        try save(RemoteDockConfiguration(hosts: hosts), to: configFileURL)
     }
 
     static func save(_ hosts: [RemoteHost], to url: URL) throws {
+        try save(RemoteDockConfiguration(hosts: hosts), to: url)
+    }
+
+    public static func save(_ configuration: RemoteDockConfiguration) throws {
+        try save(configuration, to: configFileURL)
+    }
+
+    static func save(_ configuration: RemoteDockConfiguration, to url: URL) throws {
         let directoryURL = url.deletingLastPathComponent()
 
         do {
@@ -94,7 +118,7 @@ public enum HostStore {
 
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(hosts)
+            let data = try encoder.encode(configuration)
             try data.write(to: url, options: .atomic)
         } catch {
             throw HostStoreError.writeFailed(url, error)
@@ -115,6 +139,28 @@ public enum HostStore {
             }
 
             return hostWithDirectory.withStartupCommand(suggestedStartupCommand)
+        }
+    }
+
+    static func migrateDefaultsIfNeeded(in configuration: RemoteDockConfiguration) -> RemoteDockConfiguration {
+        let normalizedGroups = deduplicatedGroups(from: configuration.groups)
+        let validGroupIDs = Set(normalizedGroups.map(\.id))
+        let normalizedHosts = migrateDefaultsIfNeeded(in: configuration.hosts).map { host in
+            guard let groupID = host.groupID, !validGroupIDs.contains(groupID) else {
+                return host
+            }
+
+            return host.withGroupID(nil)
+        }
+
+        return RemoteDockConfiguration(hosts: normalizedHosts, groups: normalizedGroups)
+    }
+
+    private static func deduplicatedGroups(from groups: [HostGroup]) -> [HostGroup] {
+        var seenIDs = Set<UUID>()
+
+        return groups.filter { group in
+            seenIDs.insert(group.id).inserted
         }
     }
 }

@@ -6,10 +6,12 @@ public struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
     public let username: String
     public let address: String
     public let port: Int?
+    public let groupID: UUID?
     public let remoteDirectory: String?
     public let startupCommand: String?
     public let preferredOpenMode: PreferredOpenMode?
     public let autoPingIntervalMinutes: Int?
+    public let autoPingDisabled: Bool?
 
     public static let defaultAutoPingIntervalMinutes = 5
 
@@ -19,20 +21,24 @@ public struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
         username: String,
         address: String,
         port: Int? = nil,
+        groupID: UUID? = nil,
         remoteDirectory: String? = nil,
         startupCommand: String? = nil,
         preferredOpenMode: PreferredOpenMode? = nil,
-        autoPingIntervalMinutes: Int? = nil
+        autoPingIntervalMinutes: Int? = nil,
+        autoPingDisabled: Bool? = nil
     ) {
         self.id = id
         self.name = name
         self.username = username
         self.address = address
         self.port = Self.normalizedPort(port)
+        self.groupID = groupID
         self.remoteDirectory = Self.normalizedRemoteDirectory(remoteDirectory)
         self.startupCommand = Self.normalizedStartupCommand(startupCommand)
         self.preferredOpenMode = preferredOpenMode
         self.autoPingIntervalMinutes = Self.normalizedAutoPingIntervalMinutes(autoPingIntervalMinutes)
+        self.autoPingDisabled = Self.normalizedAutoPingDisabled(autoPingDisabled)
     }
 
     public var sshCommand: String {
@@ -75,7 +81,7 @@ public struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
             "Port: \(port.map(String.init) ?? "Default")",
             "SSH Target: \(sshTarget)",
             "Preferred Open Mode: \(effectiveOpenMode.title)",
-            "Auto Ping Interval: \(effectiveAutoPingIntervalMinutes) min",
+            "Auto Ping Interval: \(effectiveAutoPingDescription)",
             "Remote Directory: \(effectiveRemoteDirectory)",
             "Startup Command: \(preferredStartupCommand ?? "Default behavior")"
         ]
@@ -98,12 +104,24 @@ public struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
         autoPingIntervalMinutes
     }
 
+    public var preferredAutoPingDisabledOrNil: Bool {
+        autoPingDisabled == true
+    }
+
     public var effectiveOpenMode: PreferredOpenMode {
         preferredOpenMode ?? .ghostty
     }
 
     public var effectiveAutoPingIntervalMinutes: Int {
         autoPingIntervalMinutes ?? Self.defaultAutoPingIntervalMinutes
+    }
+
+    public var effectiveAutoPingDescription: String {
+        if preferredAutoPingDisabledOrNil {
+            return "Never"
+        }
+
+        return "\(effectiveAutoPingIntervalMinutes) min"
     }
 
     public var effectiveRemoteDirectory: String {
@@ -147,10 +165,12 @@ public struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
             username: username,
             address: address,
             port: port,
+            groupID: groupID,
             remoteDirectory: remoteDirectory,
             startupCommand: startupCommand,
             preferredOpenMode: preferredOpenMode,
-            autoPingIntervalMinutes: autoPingIntervalMinutes
+            autoPingIntervalMinutes: autoPingIntervalMinutes,
+            autoPingDisabled: autoPingDisabled
         )
     }
 
@@ -161,10 +181,12 @@ public struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
             username: username,
             address: address,
             port: port,
+            groupID: groupID,
             remoteDirectory: remoteDirectory,
             startupCommand: startupCommand,
             preferredOpenMode: preferredOpenMode,
-            autoPingIntervalMinutes: autoPingIntervalMinutes
+            autoPingIntervalMinutes: autoPingIntervalMinutes,
+            autoPingDisabled: autoPingDisabled
         )
     }
 
@@ -175,10 +197,12 @@ public struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
             username: username,
             address: address,
             port: port,
+            groupID: groupID,
             remoteDirectory: remoteDirectory,
             startupCommand: startupCommand,
             preferredOpenMode: preferredOpenMode,
-            autoPingIntervalMinutes: autoPingIntervalMinutes
+            autoPingIntervalMinutes: autoPingIntervalMinutes,
+            autoPingDisabled: autoPingDisabled
         )
     }
 
@@ -189,10 +213,44 @@ public struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
             username: username,
             address: address,
             port: port,
+            groupID: groupID,
             remoteDirectory: remoteDirectory,
             startupCommand: startupCommand,
             preferredOpenMode: preferredOpenMode,
-            autoPingIntervalMinutes: autoPingIntervalMinutes
+            autoPingIntervalMinutes: autoPingIntervalMinutes,
+            autoPingDisabled: autoPingDisabled
+        )
+    }
+
+    public func withAutoPingDisabled(_ autoPingDisabled: Bool?) -> RemoteHost {
+        RemoteHost(
+            id: id,
+            name: name,
+            username: username,
+            address: address,
+            port: port,
+            groupID: groupID,
+            remoteDirectory: remoteDirectory,
+            startupCommand: startupCommand,
+            preferredOpenMode: preferredOpenMode,
+            autoPingIntervalMinutes: autoPingIntervalMinutes,
+            autoPingDisabled: autoPingDisabled
+        )
+    }
+
+    public func withGroupID(_ groupID: UUID?) -> RemoteHost {
+        RemoteHost(
+            id: id,
+            name: name,
+            username: username,
+            address: address,
+            port: port,
+            groupID: groupID,
+            remoteDirectory: remoteDirectory,
+            startupCommand: startupCommand,
+            preferredOpenMode: preferredOpenMode,
+            autoPingIntervalMinutes: autoPingIntervalMinutes,
+            autoPingDisabled: autoPingDisabled
         )
     }
 
@@ -210,6 +268,10 @@ public struct RemoteHost: Codable, Identifiable, Sendable, Equatable {
         }
 
         return value
+    }
+
+    private static func normalizedAutoPingDisabled(_ value: Bool?) -> Bool? {
+        value == true ? true : nil
     }
 
     private static func normalizedRemoteDirectory(_ value: String?) -> String? {
