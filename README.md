@@ -51,7 +51,7 @@ RemoteDock 是一个小型 macOS SwiftUI 应用，用来快速连接个人常用
 - 右侧详情页会把首选打开方式作为主按钮突出显示，并将其他打开方式整理为次级动作。
 - 统一使用结构化错误类型，并在界面层映射为明确的失败提示。
 - 将主机模型、配置读写、Ping、默认终端和 Tailscale 状态读取抽到 `RemoteDockCore` Swift Package，便于复用和后续测试。
-- `RemoteDockCore` 现已带有 Swift Testing 测试集，覆盖主机模型、配置读写、SSH 命令生成、默认终端 URL、Tailscale 状态以及带延迟解析的 Ping 执行层。
+- `RemoteDockCore` 现已带有 Swift Testing 测试集，当前共 56 个测试，覆盖主机模型、配置读写、SSH 命令生成、默认终端 URL、Tailscale 状态以及带延迟解析的 Ping 执行层。
 
 ## 项目结构
 
@@ -88,15 +88,23 @@ remoteDock/
 │   │   ├── TerminalService.swift
 │   │   └── VSCodeService.swift
 │   ├── Views/
-│   │   ├── HostCard.swift
+│   │   ├── ConfigPathFooterView.swift
+│   │   ├── DashboardHeaderView.swift
+│   │   ├── FeedbackBannerView.swift
 │   │   ├── GroupManagerView.swift
-│   │   └── HostEditorView.swift
+│   │   ├── HostCard.swift
+│   │   ├── HostDetailView.swift
+│   │   ├── HostEditorView.swift
+│   │   ├── HostsSidebarView.swift
+│   │   ├── MenuBarHostsView.swift
+│   │   ├── SettingsView.swift
+│   │   └── TailscaleStatusSheetView.swift
 │   └── Assets.xcassets
 ├── README.md
 └── TODO.md
 ```
 
-`ContentView.swift` 负责主窗口状态、双栏布局、反馈条和主机选择；`RemoteDockCore` 负责不依赖 SwiftUI / AppKit 的纯逻辑；终端自动化、VS Code 打开和剪贴板等 macOS 集成功能继续留在 App target 中。`Tests/RemoteDockCoreTests` 负责这部分核心逻辑的单元测试。
+`ContentView.swift` 现在主要负责主窗口状态和动作编排；header、sidebar、detail、footer、feedback banner 和 Tailscale sheet 已拆到独立视图中。`RemoteDockCore` 负责不依赖 SwiftUI / AppKit 的纯逻辑；终端自动化、VS Code 打开和剪贴板等 macOS 集成功能继续留在 App target 中。`Tests/RemoteDockCoreTests` 负责这部分核心逻辑的单元测试。
 
 ## 当前界面
 
@@ -111,7 +119,7 @@ remoteDock/
 
 其中 `Local Tailscale` 只会在地址看起来属于 Tailscale 网络的主机上显示。这个按钮展示的是本机的 `tailscale status`，用于快速确认当前 Mac 是否已经连上 tailnet，不代表远端主机自身状态。
 
-左侧列表现在还支持按状态筛选 `All / Online / Offline / Unchecked`，显示每台主机的 `Last checked` 相对时间和最近一次平均延迟，并按你定义的分组展示主机。每台主机都可以快速切换到某个分组，或回到 `Ungrouped`。
+左侧列表现在还支持按状态筛选 `All / Online / Offline / Unchecked`，显示每台主机的 `Last checked` 相对时间和最近一次平均延迟。正常浏览时会按你定义的分组展示主机；输入搜索词后，会切换成扁平的 `Results` 结果列表，避免把分组信息混进搜索结果。每台主机都可以快速切换到某个分组，或回到 `Ungrouped`。
 
 当前复制动作和大部分失败操作都会在顶部显示自动消失的反馈条，不再只依赖按钮文案变化或模态弹窗。
 

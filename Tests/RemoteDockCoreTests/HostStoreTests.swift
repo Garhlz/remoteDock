@@ -154,6 +154,39 @@ struct HostStoreTests {
     }
 
     @Test
+    func loadOrCreateConfigurationDeduplicatesGroupsByID() throws {
+        let tempDirectory = makeTemporaryDirectory()
+        defer { removeItemIfExists(at: tempDirectory) }
+
+        let configURL = tempDirectory.appendingPathComponent("hosts.json")
+        let duplicatedID = UUID()
+        let configuration = RemoteDockConfiguration(
+            hosts: [
+                RemoteHost(
+                    name: "Arch",
+                    username: "elaine",
+                    address: "100.117.140.113",
+                    groupID: duplicatedID
+                )
+            ],
+            groups: [
+                HostGroup(id: duplicatedID, name: "Servers"),
+                HostGroup(id: duplicatedID, name: "Servers Duplicate")
+            ]
+        )
+
+        let data = try JSONEncoder().encode(configuration)
+        try data.write(to: configURL)
+
+        let migratedConfiguration = try HostStore.loadOrCreateConfiguration(at: configURL)
+
+        #expect(migratedConfiguration.groups.count == 1)
+        #expect(migratedConfiguration.groups[0].id == duplicatedID)
+        #expect(migratedConfiguration.groups[0].name == "Servers")
+        #expect(migratedConfiguration.hosts[0].groupID == duplicatedID)
+    }
+
+    @Test
     func loadOrCreateDefaultsReturnsDecodeFailureForInvalidJSON() throws {
         let tempDirectory = makeTemporaryDirectory()
         defer { removeItemIfExists(at: tempDirectory) }

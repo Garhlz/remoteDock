@@ -395,4 +395,34 @@ struct RemoteHostTests {
         #expect(host.fullDetailsText.contains("Preferred Open Mode: VS Code"))
         #expect(host.fullDetailsText.contains("Auto Ping Interval: 5 min"))
     }
+
+    @Test
+    func fullDetailsTextReflectsDisabledAutoPingAndCustomStartupCommand() {
+        let host = RemoteHost(
+            name: "Windows Omen16",
+            username: "elaine",
+            address: "100.102.71.37",
+            remoteDirectory: "C:/Users/elaine",
+            startupCommand: #"call "%USERPROFILE%\bin\remote.cmd" "{remoteDirectory}""#,
+            autoPingDisabled: true
+        )
+
+        #expect(host.fullDetailsText.contains("Auto Ping Interval: Never"))
+        #expect(host.fullDetailsText.contains(#"Startup Command: call "%USERPROFILE%\bin\remote.cmd" "{remoteDirectory}""#))
+        #expect(host.fullDetailsText.contains("Remote Directory: C:/Users/elaine"))
+    }
+
+    @Test
+    func customAutoPingIntervalUpdatesDescription() {
+        let host = RemoteHost(
+            name: "Arch",
+            username: "elaine",
+            address: "100.117.140.113",
+            autoPingIntervalMinutes: 12
+        )
+
+        #expect(host.preferredAutoPingDisabledOrNil == false)
+        #expect(host.effectiveAutoPingIntervalMinutes == 12)
+        #expect(host.effectiveAutoPingDescription == "12 min")
+    }
 }

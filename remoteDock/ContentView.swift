@@ -8,60 +8,60 @@
 import SwiftUI
 import RemoteDockCore
 
-struct ContentView: View {
-    private enum HostFilter: String, CaseIterable, Identifiable {
-        case all = "All"
-        case online = "Online"
-        case offline = "Offline"
-        case unchecked = "Unchecked"
+enum HostFilter: String, CaseIterable, Identifiable {
+    case all = "All"
+    case online = "Online"
+    case offline = "Offline"
+    case unchecked = "Unchecked"
 
-        var id: String { rawValue }
-    }
+    var id: String { rawValue }
+}
 
-    private struct FeedbackMessage: Identifiable, Equatable {
-        enum Kind: Equatable {
-            case success
-            case error
+struct FeedbackMessage: Identifiable, Equatable {
+    enum Kind: Equatable {
+        case success
+        case error
 
-            var title: String {
-                switch self {
-                case .success:
-                    "Done"
-                case .error:
-                    "Action failed"
-                }
-            }
-
-            var systemImage: String {
-                switch self {
-                case .success:
-                    "checkmark.circle.fill"
-                case .error:
-                    "exclamationmark.triangle.fill"
-                }
-            }
-
-            var tint: Color {
-                switch self {
-                case .success:
-                    .green
-                case .error:
-                    .red
-                }
+        var title: String {
+            switch self {
+            case .success:
+                "Done"
+            case .error:
+                "Action failed"
             }
         }
 
-        let id = UUID()
-        let kind: Kind
-        let message: String
+        var systemImage: String {
+            switch self {
+            case .success:
+                "checkmark.circle.fill"
+            case .error:
+                "exclamationmark.triangle.fill"
+            }
+        }
+
+        var tint: Color {
+            switch self {
+            case .success:
+                .green
+            case .error:
+                .red
+            }
+        }
     }
 
-    private struct SidebarSection: Identifiable {
-        let id: String
-        let title: String
-        let hosts: [RemoteHost]
-    }
+    let id = UUID()
+    let kind: Kind
+    let message: String
+}
 
+struct SidebarSection: Identifiable {
+    let id: String
+    let title: String
+    let hosts: [RemoteHost]
+}
+
+struct ContentView: View {
     @State private var hosts: [RemoteHost] = []
     @State private var groups: [HostGroup] = []
     @State private var selectedHostID: UUID?
@@ -89,21 +89,55 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            topBar
+            DashboardHeaderView(
+                hostCount: hosts.count,
+                onlineCount: onlineHostsCount,
+                uncheckedCount: uncheckedHostsCount,
+                isPingingAll: isPingingAll,
+                hasHosts: !hosts.isEmpty,
+                addHost: { isAddingHost = true },
+                pingAll: {
+                    Task {
+                        await pingAll()
+                    }
+                }
+            )
+
             if let feedbackMessage {
-                feedbackBanner(for: feedbackMessage)
+                FeedbackBannerView(feedback: feedbackMessage) {
+                    self.feedbackMessage = nil
+                }
             }
 
             HSplitView {
-                sidebar
-                    .frame(minWidth: 220, idealWidth: 240, maxWidth: 270)
+                HostsSidebarView(
+                    hosts: hosts,
+                    groups: groups,
+                    searchText: $searchText,
+                    selectedFilter: $selectedFilter,
+                    selectedHostID: $selectedHostID,
+                    isSidebarControlsExpanded: $isSidebarControlsExpanded,
+                    filteredHosts: filteredHosts,
+                    sidebarSections: sidebarSections,
+                    lastCheckedAt: lastCheckedAt,
+                    openModeSystemImage: { effectiveOpenMode(for: $0).systemImage },
+                    status: status(for:),
+                    latencyText: latencyText(for:),
+                    manageGroups: { isManagingGroups = true }
+                )
+                .frame(minWidth: 220, idealWidth: 240, maxWidth: 270)
 
                 detailPane
                     .frame(minWidth: 520, idealWidth: 760, maxWidth: .infinity, maxHeight: .infinity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            configPathFooter
+            ConfigPathFooterView(
+                configPath: configPath,
+                didCopyPath: didCopyConfigPath,
+                copyPath: copyConfigPath,
+                reload: loadHosts
+            )
         }
         .padding(18)
         .frame(minWidth: 920, minHeight: 620)
@@ -135,270 +169,59 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: isShowingTailscaleStatus) {
-            tailscaleStatusSheet
+            TailscaleStatusSheetView(
+                statusText: tailscaleStatusText ?? "",
+                dismiss: { tailscaleStatusText = nil },
+                copy: {
+                    guard let tailscaleStatusText else {
+                        return
+                    }
+
+                    ClipboardService.copy(tailscaleStatusText)
+                    showFeedback(.success, "Local Tailscale status copied.")
+                }
+            )
         }
         .focusedSceneValue(\.openSelectedHost, openSelectedHostAction)
         .focusedSceneValue(\.pingSelectedHost, pingSelectedHostAction)
         .focusedSceneValue(\.selectedHostName, selectedHost?.name)
     }
 
-    private var topBar: some View {
-        HStack(alignment: .center, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("RemoteDock")
-                    .font(.system(size: 28, weight: .bold))
-
-                Text("Remote hosts, SSH sessions, and remote workspaces.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer(minLength: 12)
-
-            HStack(spacing: 8) {
-                compactMetric(title: "Hosts", value: "\(hosts.count)")
-                compactMetric(title: "Online", value: "\(onlineHostsCount)")
-                compactMetric(title: "Unchecked", value: "\(uncheckedHostsCount)")
-            }
-
-            Button(action: {
-                isAddingHost = true
-            }) {
-                Label("Add Host", systemImage: "plus")
-            }
-            .buttonStyle(.bordered)
-
-            SettingsLink {
-                Label("Settings", systemImage: "gearshape")
-            }
-            .buttonStyle(.bordered)
-
-            Button(action: {
-                Task {
-                    await pingAll()
-                }
-            }) {
-                Label(isPingingAll ? "Checking" : "Ping All", systemImage: "network")
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(hosts.isEmpty || isPingingAll)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(.quaternary)
-        }
-    }
-
-    private var sidebar: some View {
-        VStack(spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Hosts")
-                        .font(.headline)
-
-                    Text("\(hosts.count) configured  •  \(groups.count) groups")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Button {
-                    isManagingGroups = true
-                } label: {
-                    Image(systemName: "folder.badge.gearshape")
-                        .imageScale(.medium)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Manage host groups")
-
-                Button {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        isSidebarControlsExpanded.toggle()
-                    }
-                } label: {
-                    Image(systemName: isSidebarControlsExpanded ? "chevron.up.circle" : "slider.horizontal.3")
-                        .imageScale(.medium)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help(isSidebarControlsExpanded ? "Hide search and filter" : "Show search and filter")
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 12)
-            .padding(.bottom, 10)
-
-            if isSidebarControlsExpanded {
-                VStack(spacing: 10) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundStyle(.secondary)
-
-                        TextField("Search hosts", text: $searchText)
-                            .textFieldStyle(.plain)
-
-                        if !searchText.isEmpty {
-                            Button(action: {
-                                searchText = ""
-                            }) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(Color.secondary.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                    HStack(spacing: 8) {
-                        Image(systemName: "line.3.horizontal.decrease.circle")
-                            .foregroundStyle(.secondary)
-
-                        Picker("Status Filter", selection: $selectedFilter) {
-                            ForEach(HostFilter.allCases) { filter in
-                                Text(filter.rawValue).tag(filter)
-                            }
-                        }
-                        .pickerStyle(.menu)
-
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(Color.secondary.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-                .padding(.horizontal, 14)
-                .padding(.bottom, 12)
-                .transition(.move(edge: .top).combined(with: .opacity))
-            } else if !searchText.isEmpty || selectedFilter != .all {
-                HStack(spacing: 8) {
-                    if !searchText.isEmpty {
-                        collapsedControlTag(title: searchText, systemImage: "magnifyingglass")
-                    }
-
-                    if selectedFilter != .all {
-                        collapsedControlTag(title: selectedFilter.rawValue, systemImage: "line.3.horizontal.decrease.circle")
-                    }
-
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 14)
-                .padding(.bottom, 12)
-                .transition(.opacity)
-            }
-
-            Divider()
-
-            if filteredHosts.isEmpty {
-                ContentUnavailableView(
-                    hosts.isEmpty ? "No Hosts" : "No Results",
-                    systemImage: hosts.isEmpty ? "server.rack" : "line.3.horizontal.decrease.circle",
-                    description: Text(
-                        hosts.isEmpty
-                        ? "Add your first host to get started."
-                        : "Try a different name, address, username, path, or status filter."
-                    )
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List(selection: $selectedHostID) {
-                    ForEach(sidebarSections) { section in
-                        Section(section.title) {
-                            ForEach(section.hosts) { host in
-                                HostSidebarRow(
-                                    host: host,
-                                    openModeSystemImage: effectiveOpenMode(for: host).systemImage,
-                                    status: status(for: host),
-                                    latencyText: latencyText(for: host),
-                                    lastCheckedAt: lastCheckedAt[host.id],
-                                    isSelected: selectedHostID == host.id
-                                )
-                                .tag(host.id)
-                                .listRowInsets(EdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10))
-                                .listRowBackground(Color.clear)
-                            }
-                        }
-                    }
-                }
-                .listStyle(.sidebar)
-                .scrollContentBackground(.hidden)
-            }
-        }
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(.quaternary)
-        }
-    }
-
     private var detailPane: some View {
         Group {
             if let host = selectedHost {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        detailHeader(for: host)
-
-                            HostCard(
-                            preferredOpenMode: effectiveOpenMode(for: host),
-                            status: status(for: host),
-                            copiedLabel: copiedFeedback[host.id],
-                            openPreferred: {
-                                openPreferred(for: host)
-                            },
-                            copySSHCommand: {
-                                copy(host.sshCommand, label: "SSH", for: host)
-                            },
-                            copyIPAddress: {
-                                copy(host.address, label: "IP", for: host)
-                            },
-                            copyHostDetails: {
-                                copy(fullDetailsText(for: host), label: "Host", for: host)
-                            },
-                            openSSH: {
-                                openSSHSession(for: host)
-                            },
-                            openDefaultTerminal: {
-                                openDefaultTerminalSession(for: host)
-                            },
-                            openVSCodeRemote: {
-                                openVSCodeRemote(for: host)
-                            },
-                            showTailscaleStatus: {
-                                showTailscaleStatus(for: host)
-                            },
-                            showsTailscaleStatusAction: host.usesTailscale,
-                            ping: {
-                                Task {
-                                    await ping(host)
-                                }
-                            },
-                            edit: {
-                                hostBeingEdited = host
-                            },
-                            delete: {
-                                delete(host)
-                            },
-                            moveUp: {
-                                move(host, by: -1)
-                            },
-                            moveDown: {
-                                move(host, by: 1)
-                            },
-                            canMoveUp: canMove(host, by: -1),
-                            canMoveDown: canMove(host, by: 1)
-                        )
-
-                        hostMetadata(for: host)
-                    }
+                    HostDetailView(
+                        host: host,
+                        groups: groups,
+                        preferredOpenMode: effectiveOpenMode(for: host),
+                        status: status(for: host),
+                        copiedLabel: copiedFeedback[host.id],
+                        latencyText: latencyText(for: host),
+                        lastCheckedAt: lastCheckedAt[host.id],
+                        autoPingDescription: effectiveAutoPingDescription(for: host),
+                        groupName: groupName(for: host),
+                        openPreferred: { openPreferred(for: host) },
+                        copySSHCommand: { copy(host.sshCommand, label: "SSH", for: host) },
+                        copyIPAddress: { copy(host.address, label: "IP", for: host) },
+                        copyHostDetails: { copy(fullDetailsText(for: host), label: "Host", for: host) },
+                        openSSH: { openSSHSession(for: host) },
+                        openDefaultTerminal: { openDefaultTerminalSession(for: host) },
+                        openVSCodeRemote: { openVSCodeRemote(for: host) },
+                        showTailscaleStatus: { showTailscaleStatus(for: host) },
+                        ping: {
+                            Task {
+                                await ping(host)
+                            }
+                        },
+                        edit: { hostBeingEdited = host },
+                        delete: { delete(host) },
+                        moveUp: { move(host, by: -1) },
+                        moveDown: { move(host, by: 1) },
+                        canMoveUp: canMove(host, by: -1),
+                        canMoveDown: canMove(host, by: 1),
+                        assignGroup: { assignGroup($0, to: host) }
+                    )
                     .padding(22)
                 }
             } else {
@@ -411,46 +234,6 @@ struct ContentView: View {
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(.quaternary)
-        }
-    }
-
-    private var configPathFooter: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Label("Config File", systemImage: "doc.text")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .help("RemoteDock host configuration file")
-
-                Text(configPath.isEmpty ? "Config path unavailable" : configPath)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-
-            Spacer(minLength: 12)
-
-            Button(action: copyConfigPath) {
-                Label(didCopyConfigPath ? "Copied" : "Copy Path", systemImage: didCopyConfigPath ? "checkmark" : "doc.on.doc")
-            }
-            .buttonStyle(.bordered)
-            .disabled(configPath.isEmpty)
-            .help("Copy the config file path")
-
-            Button(action: loadHosts) {
-                Label("Reload", systemImage: "arrow.clockwise")
-            }
-            .buttonStyle(.bordered)
-            .help("Reload hosts from disk")
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay {
             RoundedRectangle(cornerRadius: 10)
@@ -514,7 +297,7 @@ struct ContentView: View {
     }
 
     private var filteredHosts: [RemoteHost] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = trimmedSearchText
         let statusFilteredHosts = hosts.filter { host in
             switch selectedFilter {
             case .all:
@@ -542,7 +325,15 @@ struct ContentView: View {
         }
     }
 
+    private var trimmedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private var sidebarSections: [SidebarSection] {
+        if !trimmedSearchText.isEmpty {
+            return [SidebarSection(id: "results", title: "Results", hosts: filteredHosts)]
+        }
+
         var sections: [SidebarSection] = groups.compactMap { group in
             let sectionHosts = filteredHosts.filter { $0.groupID == group.id }
             guard !sectionHosts.isEmpty else {
@@ -978,198 +769,6 @@ struct ContentView: View {
         selectedHostID = filteredHosts.first?.id ?? hosts.first?.id
     }
 
-    private func compactMetric(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Text(value)
-                .font(.headline)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(Color.secondary.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .help("\(title): \(value)")
-    }
-
-    private func collapsedControlTag(title: String, systemImage: String) -> some View {
-        Label(title, systemImage: systemImage)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 6)
-            .background(Color.secondary.opacity(0.08))
-            .clipShape(Capsule())
-    }
-
-    private func detailHeader(for host: RemoteHost) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(host.name)
-                        .font(.title.weight(.semibold))
-
-                    Text(host.sshTarget)
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 12)
-
-                Label(status(for: host).rawValue, systemImage: status(for: host).systemImage)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(status(for: host).color)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(status(for: host).color.opacity(0.12))
-                    .clipShape(Capsule())
-                    .help(statusTooltip(for: status(for: host)))
-            }
-
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) {
-                    detailTag(title: host.username, systemImage: "person")
-                    detailTag(title: effectiveOpenMode(for: host).title, systemImage: effectiveOpenMode(for: host).systemImage)
-                    groupAssignmentMenu(for: host)
-                    detailTag(title: host.effectiveRemoteDirectory, systemImage: "folder")
-
-                    if host.preferredStartupCommand != nil {
-                        detailTag(title: "Custom startup", systemImage: "bolt")
-                    }
-
-                    Spacer(minLength: 0)
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    detailTag(title: host.username, systemImage: "person")
-                    detailTag(title: effectiveOpenMode(for: host).title, systemImage: effectiveOpenMode(for: host).systemImage)
-                    groupAssignmentMenu(for: host)
-                    detailTag(title: host.effectiveRemoteDirectory, systemImage: "folder")
-
-                    if host.preferredStartupCommand != nil {
-                        detailTag(title: "Custom startup", systemImage: "bolt")
-                    }
-                }
-            }
-        }
-    }
-
-    private func hostMetadata(for host: RemoteHost) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Connection Details")
-                .font(.headline)
-
-            detailGridRow(
-                leftTitle: "Username",
-                leftValue: host.username,
-                rightTitle: "Preferred Open",
-                rightValue: effectiveOpenMode(for: host).title
-            )
-
-            detailGridRow(
-                leftTitle: "Endpoint",
-                leftValue: host.port.map { "\(host.address):\($0)" } ?? host.address,
-                rightTitle: "Auto Ping",
-                rightValue: effectiveAutoPingDescription(for: host)
-            )
-
-            detailGridRow(
-                leftTitle: "Group",
-                leftValue: groupName(for: host) ?? "Ungrouped",
-                rightTitle: "Latency",
-                rightValue: latencyText(for: host) ?? "Unavailable"
-            )
-
-            HStack(alignment: .top, spacing: 18) {
-                detailCell(title: "Remote Directory", value: host.effectiveRemoteDirectory)
-                lastCheckedDetailCell(for: host)
-            }
-
-            detailGridRow(
-                leftTitle: "Current Status",
-                leftValue: status(for: host).rawValue,
-                rightTitle: "VS Code Target",
-                rightValue: host.vscodeRemoteDirectory
-            )
-
-            detailRow(title: "Startup Command", value: host.preferredStartupCommand ?? "Default behavior")
-        }
-        .padding(20)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay {
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(.quaternary)
-        }
-    }
-
-    private func detailRow(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            Text(value)
-                .font(.system(.body, design: .monospaced))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .textSelection(.enabled)
-        }
-    }
-
-    private func detailGridRow(
-        leftTitle: String,
-        leftValue: String,
-        rightTitle: String,
-        rightValue: String
-    ) -> some View {
-        HStack(alignment: .top, spacing: 18) {
-            detailCell(title: leftTitle, value: leftValue)
-            detailCell(title: rightTitle, value: rightValue)
-        }
-    }
-
-    private func detailCell(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            Text(value)
-                .font(.system(.body, design: .monospaced))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .textSelection(.enabled)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func lastCheckedDetailCell(for host: RemoteHost) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Last Checked")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            if let date = lastCheckedAt[host.id] {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(date, style: .relative)
-                        .font(.system(.body, design: .monospaced))
-
-                    Text(date.formatted(date: .abbreviated, time: .shortened))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .help(date.formatted(date: .complete, time: .standard))
-            } else {
-                Text("Not checked yet")
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
     private func latencyText(for host: RemoteHost) -> String? {
         guard let value = latencyMilliseconds[host.id] else {
             return nil
@@ -1186,64 +785,12 @@ struct ContentView: View {
         return String(format: "%.1f ms", value)
     }
 
-    private func detailTag(title: String, systemImage: String) -> some View {
-        Label(title, systemImage: systemImage)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color.secondary.opacity(0.08))
-            .clipShape(Capsule())
-    }
-
-    private func groupAssignmentMenu(for host: RemoteHost) -> some View {
-        Menu {
-            Button(host.groupID == nil ? "Ungrouped" : "Move to Ungrouped") {
-                assignGroup(nil, to: host)
-            }
-
-            if !groups.isEmpty {
-                Divider()
-
-                ForEach(groups) { group in
-                    Button {
-                        assignGroup(group.id, to: host)
-                    } label: {
-                        if host.groupID == group.id {
-                            Label(group.name, systemImage: "checkmark")
-                        } else {
-                            Text(group.name)
-                        }
-                    }
-                }
-            }
-        } label: {
-            detailTag(title: groupName(for: host) ?? "Ungrouped", systemImage: "folder.badge.person.crop")
-        }
-        .menuStyle(.borderlessButton)
-        .help("Change host group")
-    }
-
     private func groupName(for host: RemoteHost) -> String? {
         guard let groupID = host.groupID else {
             return nil
         }
 
         return groups.first(where: { $0.id == groupID })?.name
-    }
-
-    private func statusTooltip(for status: HostStatus) -> String {
-        switch status {
-        case .unknown:
-            "Host has not been checked yet"
-        case .checking:
-            "Checking host reachability"
-        case .online:
-            "Host responded to ping"
-        case .offline:
-            "Host did not respond to ping"
-        }
     }
 
     @MainActor
@@ -1270,167 +817,5 @@ struct ContentView: View {
         default:
             "\(label) copied for \(host.name)."
         }
-    }
-
-    private func feedbackBanner(for feedback: FeedbackMessage) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: feedback.kind.systemImage)
-                .font(.headline)
-                .foregroundStyle(feedback.kind.tint)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(feedback.kind.title)
-                    .font(.subheadline.weight(.semibold))
-
-                Text(feedback.message)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-            }
-
-            Spacer(minLength: 12)
-
-            Button {
-                feedbackMessage = nil
-            } label: {
-                Image(systemName: "xmark")
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(feedback.kind.tint.opacity(0.10))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(feedback.kind.tint.opacity(0.28))
-        }
-        .transition(.move(edge: .top).combined(with: .opacity))
-        .animation(.easeInOut(duration: 0.18), value: feedback.id)
-    }
-
-    private var tailscaleStatusSheet: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("Local Tailscale Status")
-                    .font(.title2.bold())
-
-                Spacer()
-
-                Button("Done") {
-                    tailscaleStatusText = nil
-                }
-            }
-
-            ScrollView {
-                Text(tailscaleStatusText ?? "")
-                    .font(.system(.body, design: .monospaced))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-            }
-            .padding(14)
-            .background(Color(nsColor: .textBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-
-            HStack {
-                Spacer()
-
-                Button("Copy") {
-                    guard let tailscaleStatusText else {
-                        return
-                    }
-
-                    ClipboardService.copy(tailscaleStatusText)
-                    showFeedback(.success, "Local Tailscale status copied.")
-                }
-                .buttonStyle(.bordered)
-            }
-        }
-        .padding(24)
-        .frame(minWidth: 640, minHeight: 420)
-    }
-}
-
-private struct HostSidebarRow: View {
-    let host: RemoteHost
-    let openModeSystemImage: String
-    let status: HostStatus
-    let latencyText: String?
-    let lastCheckedAt: Date?
-    let isSelected: Bool
-
-    var body: some View {
-        HStack(spacing: 10) {
-            RoundedRectangle(cornerRadius: 4)
-                .fill(isSelected ? Color.accentColor : Color.clear)
-                .frame(width: 4)
-
-            Image(systemName: openModeSystemImage)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(isSelected ? .white : .secondary)
-                .frame(width: 20, height: 20)
-                .padding(6)
-                .background(isSelected ? Color.accentColor : Color.secondary.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(status.color)
-                        .frame(width: 8, height: 8)
-
-                    Text(host.name)
-                        .font(.body.weight(.medium))
-                        .foregroundStyle(isSelected ? .primary : .primary)
-                        .lineLimit(1)
-                }
-
-                Text(host.displayAddress)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(isSelected ? Color.primary.opacity(0.72) : Color.secondary)
-                    .lineLimit(1)
-
-                if let latencyText, status == .online {
-                    Text(latencyText)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(isSelected ? Color.primary.opacity(0.68) : status.color)
-                        .lineLimit(1)
-                }
-
-                if let lastCheckedAt {
-                    HStack(spacing: 4) {
-                        Text("Checked")
-                        Text(lastCheckedAt, style: .relative)
-                    }
-                    .font(.caption2)
-                    .foregroundStyle(isSelected ? Color.primary.opacity(0.62) : Color.secondary.opacity(0.72))
-                    .lineLimit(1)
-                    .help(lastCheckedAt.formatted(date: .complete, time: .standard))
-                } else {
-                    Text("Not checked yet")
-                        .font(.caption2)
-                        .foregroundStyle(isSelected ? Color.primary.opacity(0.62) : Color.secondary.opacity(0.72))
-                        .lineLimit(1)
-                }
-            }
-
-            Spacer(minLength: 8)
-
-            if host.preferredStartupCommand != nil {
-                Image(systemName: "bolt.fill")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .help("This host runs a custom startup command after SSH login")
-            }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 9)
-        .background(isSelected ? Color.accentColor.opacity(0.14) : Color.clear)
-        .overlay {
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(isSelected ? Color.accentColor.opacity(0.22) : Color.clear)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }

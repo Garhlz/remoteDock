@@ -51,7 +51,7 @@
 - [x] 把 SSH 后续动作改成单条远程命令模式，不再依赖 `delay 1.5`。
 - [x] 增加“默认终端”打开方式，减少对 Ghostty 的耦合。
 - [x] 为每台主机增加可选的“首选打开方式”，允许在 Ghostty、默认终端和 VS Code 之间切换。
-- [ ] 为左侧 hosts 列表增加用户自定义分组：
+- [x] 为左侧 hosts 列表增加用户自定义分组：
   - [x] 定义 `HostGroup` / `RemoteDockConfiguration` 数据结构，并保留旧 `hosts.json` 的迁移兼容。
   - [x] 支持“未分组主机”视图，保证旧主机和退出分组的主机仍可正常显示。
   - [x] 支持创建分组、重命名分组、删除分组。
@@ -75,7 +75,7 @@
 
 ## 第四优先级：架构、安全与测试
 
-当前 `RemoteDockCore` 已有 `53` 个测试，覆盖 `6` 个 suite。
+当前 `RemoteDockCore` 已有 `56` 个测试，覆盖 `6` 个 suite。
 
 - [x] 修正 `Ping All` 的进行中状态判断，避免首个主机返回后按钮重新可点，导致重复并发检测。
 - [x] 把纯 Swift 逻辑抽成 `RemoteDockCore` Swift Package。
@@ -173,6 +173,7 @@
 - [x] 为 SSH、默认终端和 VS Code Remote 增加可选端口支持。
 - [x] 为每台主机增加首选打开方式，并让详情页主按钮随之变化。
 - [x] 优化右侧详情区和左侧选中态，突出当前主机的核心动作和连接方式。
+- [x] 将主界面的编排层继续拆分，抽出独立的 header / sidebar / detail / footer / feedback / sheet 视图，降低 `ContentView.swift` 的复杂度。
 
 ## 备注
 
