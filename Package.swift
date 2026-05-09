@@ -15,11 +15,13 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "RemoteDockCore"
+            name: "RemoteDockCore",
+            exclude: ["README.md"]
         ),
         .testTarget(
             name: "RemoteDockCoreTests",
-            dependencies: ["RemoteDockCore"]
+            dependencies: ["RemoteDockCore"],
+            exclude: ["README.md"]
         )
     ]
 )

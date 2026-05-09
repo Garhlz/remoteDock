@@ -1,7 +1,14 @@
 import SwiftUI
 import RemoteDockCore
 
+/// 左侧主机导航列表，负责搜索、筛选、分组和选中态展示。
+///
+/// 这个视图的职责非常明确：只负责“导航体验”。
+/// 真正的数据筛选结果、状态计算和分组结构都由上层 `ContentView` 先准备好，再传进来。
+/// 因此这里更像一个纯展示层组件。
 struct HostsSidebarView: View {
+    /// 这里的多个 `@Binding` 表示 sidebar 直接参与编辑页面级状态，
+    /// 例如搜索词、筛选项和当前选中项都由上层持有，但在这里更新。
     let hosts: [RemoteHost]
     let groups: [HostGroup]
     @Binding var searchText: String
@@ -17,6 +24,10 @@ struct HostsSidebarView: View {
     let manageGroups: () -> Void
 
     var body: some View {
+        /// 结构分成三层：
+        /// 1. 顶部标题和控制按钮；
+        /// 2. 搜索/筛选区域；
+        /// 3. 主机列表或空状态提示。
         VStack(spacing: 0) {
             header
 
@@ -71,6 +82,9 @@ struct HostsSidebarView: View {
         }
     }
 
+    /// 顶部标题除了显示统计信息，还承担两个入口：
+    /// - 打开分组管理弹窗
+    /// - 展开/收起搜索筛选区域
     private var header: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
@@ -109,6 +123,7 @@ struct HostsSidebarView: View {
         .padding(.bottom, 10)
     }
 
+    /// 展开态下显示完整控制区，适合经常搜索或切换筛选的用户。
     private var expandedControls: some View {
         VStack(spacing: 10) {
             HStack(spacing: 8) {
@@ -118,6 +133,7 @@ struct HostsSidebarView: View {
                 TextField("Search hosts", text: $searchText)
                     .textFieldStyle(.plain)
 
+                /// 搜索框右侧的清除按钮只在有输入时出现，保持空状态下的界面更简洁。
                 if !searchText.isEmpty {
                     Button {
                         searchText = ""
@@ -156,6 +172,7 @@ struct HostsSidebarView: View {
         .transition(.move(edge: .top).combined(with: .opacity))
     }
 
+    /// 收起态下只保留“当前已生效的筛选标签”，减少视觉噪音。
     private var collapsedControls: some View {
         HStack(spacing: 8) {
             if !searchText.isEmpty {
@@ -174,11 +191,13 @@ struct HostsSidebarView: View {
     }
 }
 
+/// 收起态下用于展示搜索词或筛选条件的轻量标签。
 private struct SidebarTagView: View {
     let title: String
     let systemImage: String
 
     var body: some View {
+        /// 这个标签的作用不是提供交互，而是把“当前生效的条件”用紧凑形式提示出来。
         Label(title, systemImage: systemImage)
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -190,6 +209,16 @@ private struct SidebarTagView: View {
     }
 }
 
+/// 单条主机在 sidebar 中的展示行。
+///
+/// 这一行尝试在很小的空间里表达尽可能多的信息：
+/// - 打开方式图标
+/// - 在线状态
+/// - 主机名称
+/// - 地址
+/// - 延迟
+/// - 上次检查时间
+/// - 是否有自定义启动命令
 private struct HostSidebarRow: View {
     let host: RemoteHost
     let openModeSystemImage: String
@@ -199,6 +228,7 @@ private struct HostSidebarRow: View {
     let isSelected: Bool
 
     var body: some View {
+        /// 左侧彩条 + 图标背景共同强化“当前选中项”的视觉锚点。
         HStack(spacing: 10) {
             RoundedRectangle(cornerRadius: 4)
                 .fill(isSelected ? Color.accentColor : Color.clear)
@@ -230,6 +260,7 @@ private struct HostSidebarRow: View {
                     .lineLimit(1)
 
                 if let latencyText, status == .online {
+                    /// 只有在线状态才展示延迟，避免离线或未知状态下出现误导性的旧数值。
                     Text(latencyText)
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(isSelected ? Color.primary.opacity(0.68) : status.color)
@@ -237,6 +268,7 @@ private struct HostSidebarRow: View {
                 }
 
                 if let lastCheckedAt {
+                    /// 这里优先显示相对时间，让列表更适合快速扫读；tooltip 再补充完整时间戳。
                     HStack(spacing: 4) {
                         Text("Checked")
                         Text(lastCheckedAt, style: .relative)
@@ -256,6 +288,7 @@ private struct HostSidebarRow: View {
             Spacer(minLength: 8)
 
             if host.preferredStartupCommand != nil {
+                /// bolt 图标表示这台主机登录后还会执行额外 follow-up 命令。
                 Image(systemName: "bolt.fill")
                     .font(.caption)
                     .foregroundStyle(.secondary)

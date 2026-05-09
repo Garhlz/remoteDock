@@ -1,6 +1,13 @@
 import SwiftUI
 import RemoteDockCore
 
+/// 单个主机的详情页内容，组合头部信息、动作卡片和连接详情。
+///
+/// 这个视图本身几乎不保存业务状态，而是接收上层 `ContentView` 传下来的数据和动作闭包。
+/// 这样做的好处是：
+/// - UI 布局与业务逻辑分离；
+/// - 视图更容易复用和测试；
+/// - 真正的数据源始终只有一份，避免多个地方各管一套状态。
 struct HostDetailView: View {
     let host: RemoteHost
     let groups: [HostGroup]
@@ -62,6 +69,7 @@ struct HostDetailView: View {
         }
     }
 
+    /// 顶部区域负责回答“这台机器是谁、当前状态如何、有哪些快速上下文标签”。
     private var detailHeader: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
@@ -86,6 +94,8 @@ struct HostDetailView: View {
                     .help(statusTooltip)
             }
 
+            /// `ViewThatFits` 会优先尝试横向排布；空间不够时再退回纵向堆叠。
+            /// 这样无需手工判断窗口宽度，就能适配不同尺寸。
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 8) {
                     detailTag(title: host.username, systemImage: "person")
@@ -114,6 +124,8 @@ struct HostDetailView: View {
         }
     }
 
+    /// 下半部分是更稳定、更偏“配置详情”的信息网格。
+    /// 与上面的动作卡片相比，这里更像一块只读说明面板。
     private var hostMetadata: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Connection Details")
@@ -163,6 +175,7 @@ struct HostDetailView: View {
         }
     }
 
+    /// 分组切换菜单直接把用户选择回传给上层，由上层决定如何保存。
     private var groupAssignmentMenu: some View {
         Menu {
             Button(host.groupID == nil ? "Ungrouped" : "Move to Ungrouped") {
@@ -191,6 +204,8 @@ struct HostDetailView: View {
         .help("Change host group")
     }
 
+    /// 最后检查时间同时提供相对时间和绝对时间，
+    /// 兼顾“好读”和“精确”两个场景。
     private var lastCheckedDetailCell: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Last Checked")
@@ -216,6 +231,7 @@ struct HostDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// Tooltip 解释状态胶囊背后的含义，避免只有颜色和图标而不够直白。
     private var statusTooltip: String {
         switch status {
         case .unknown:
@@ -230,6 +246,7 @@ struct HostDetailView: View {
     }
 
     private func detailRow(title: String, value: String) -> some View {
+        /// 单列详情行，适合像 Startup Command 这样长度可能明显大于其它字段的内容。
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.caption.weight(.semibold))
@@ -248,6 +265,7 @@ struct HostDetailView: View {
         rightTitle: String,
         rightValue: String
     ) -> some View {
+        /// 双列网格行，用于并排展示信息密度相近的两个字段。
         HStack(alignment: .top, spacing: 18) {
             detailCell(title: leftTitle, value: leftValue)
             detailCell(title: rightTitle, value: rightValue)
@@ -255,6 +273,7 @@ struct HostDetailView: View {
     }
 
     private func detailCell(title: String, value: String) -> some View {
+        /// `detailCell` 是网格里的最小复用单元：标题一行，值一行，可选中文本。
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.caption.weight(.semibold))
@@ -269,6 +288,8 @@ struct HostDetailView: View {
     }
 
     private func detailTag(title: String, systemImage: String) -> some View {
+        /// 详情标签用于表达“上下文属性”，比如用户名、分组、目录、打开方式。
+        /// 它们比正文更轻，但比注释更显眼。
         Label(title, systemImage: systemImage)
             .font(.caption)
             .foregroundStyle(.secondary)

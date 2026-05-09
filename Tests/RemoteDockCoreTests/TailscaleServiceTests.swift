@@ -3,7 +3,13 @@ import Testing
 @testable import RemoteDockCore
 
 @Suite(.serialized)
+/// 覆盖 Tailscale CLI 路径探测与命令结果处理的测试集合。
+///
+/// 与 PingServiceTests 类似，这里主要验证依赖注入后的行为分支：
+/// - CLI 是否能被正确发现
+/// - 成功输出、空输出、失败输出是否被映射成预期结果
 struct TailscaleServiceTests {
+    /// 多个候选路径同时存在时，应优先返回定义顺序更靠前的那个。
     @Test
     func executablePathUsesFirstAvailableCandidate() {
         let expectedPath = "/opt/homebrew/bin/tailscale"

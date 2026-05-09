@@ -8,7 +8,15 @@
 import SwiftUI
 import RemoteDockCore
 
+/// 新增或编辑主机时使用的表单视图。
+///
+/// 这是典型的“编辑草稿”视图：
+/// - 打开时先把 `RemoteHost` 拆成一组适合表单编辑的字符串/枚举状态；
+/// - 用户修改的是这些草稿值，而不是直接修改原模型；
+/// - 点击保存后再统一校验，并重新组装成新的 `RemoteHost`。
 struct HostEditorView: View {
+    /// 打开方式在 UI 中多了一个 “Use Global Default” 选项，
+    /// 所以这里不能直接绑定 `PreferredOpenMode?`，需要一个专门的表单枚举。
     private enum OpenModeSelection: String, CaseIterable, Identifiable {
         case useDefault
         case ghostty
@@ -18,6 +26,7 @@ struct HostEditorView: View {
         var id: String { rawValue }
     }
 
+    /// 自动 ping 也同理：表单需要把“跟随全局 / 自定义 / 永不”表达成更适合用户理解的选项。
     private enum AutoPingSelection: String, CaseIterable, Identifiable {
         case useGlobal
         case customMinutes
@@ -48,6 +57,8 @@ struct HostEditorView: View {
     @State private var validationMessage: String?
     private let startupCommandPlaceholder: String
 
+    /// 初始化时把原模型拆成可编辑字段。
+    /// 例如端口和自动 ping 间隔在表单中要显示成字符串，而不是 Int。
     init(title: String, host: RemoteHost?, availableGroups: [HostGroup], save: @escaping (RemoteHost) -> Void) {
         self.title = title
         self.originalHost = host
@@ -67,6 +78,8 @@ struct HostEditorView: View {
     }
 
     var body: some View {
+        /// 这里的说明文本刻意写得比较“翻译业务规则”，
+        /// 让用户不用理解实现细节也知道不同选项最终会如何生效。
         VStack(alignment: .leading, spacing: 18) {
             Text(title)
                 .font(.title2.bold())
@@ -163,6 +176,12 @@ struct HostEditorView: View {
         .frame(width: 430)
     }
 
+    /// 保存动作的顺序非常重要：
+    /// 1. 先 trim；
+    /// 2. 再逐项校验；
+    /// 3. 最后统一构造 `RemoteHost`。
+    ///
+    /// 这种写法能保证错误提示更聚焦，也避免半合法数据提前写入模型。
     private func saveHost() {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedUsername = username.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -207,6 +226,7 @@ struct HostEditorView: View {
             return
         }
 
+        /// 真正构造模型时，再把字符串字段解析回更适合持久化的类型。
         let host = RemoteHost(
             id: originalHost?.id ?? UUID(),
             name: trimmedName,
@@ -225,14 +245,18 @@ struct HostEditorView: View {
         dismiss()
     }
 
+    /// 地址当前只做轻量校验：不能为空且不能带空白字符。
+    /// 这里允许域名、IPv4、IPv6、Tailscale 域名等多种形式。
     private func isValidAddress(_ value: String) -> Bool {
         !value.isEmpty && !value.contains(where: { $0.isWhitespace })
     }
 
+    /// 路径允许为空，但不允许换行，避免破坏配置文件或命令拼接。
     private func isValidRemoteDirectory(_ value: String) -> Bool {
         !value.contains(where: \.isNewline)
     }
 
+    /// 端口字段可以留空；只要填了，就必须能被解析成合法端口。
     private func isValidPort(_ value: String) -> Bool {
         value.isEmpty || parsedPort(from: value) != nil
     }
@@ -249,6 +273,7 @@ struct HostEditorView: View {
         return port
     }
 
+    /// 自定义 auto ping 只有在 `customMinutes` 模式下才必须可解析。
     private func isValidAutoPingIntervalMinutes(_ value: String) -> Bool {
         autoPingSelection != .customMinutes || parsedAutoPingIntervalMinutes(from: value) != nil
     }
@@ -265,6 +290,7 @@ struct HostEditorView: View {
         return minutes
     }
 
+    /// 启动命令目前允许任意单行文本，避免过早限制高级用户的自定义能力。
     private func isValidStartupCommand(_ value: String) -> Bool {
         !value.contains(where: \.isNewline)
     }
@@ -284,6 +310,7 @@ struct HostEditorView: View {
         )
     }
 
+    /// 给输入框 prompt 用的文案，会根据全局设置变化，让用户更直观看到“留空后会继承什么”。
     private var hostAutoPingPrompt: String {
         switch resolvedDefaultAutoPingMode {
         case .seconds:
@@ -295,6 +322,7 @@ struct HostEditorView: View {
         }
     }
 
+    /// 把模型状态恢复成表单枚举，用于编辑已有主机时回填 UI。
     private static func autoPingSelection(for host: RemoteHost?) -> AutoPingSelection {
         if host?.preferredAutoPingDisabledOrNil == true {
             return .never
@@ -307,6 +335,8 @@ struct HostEditorView: View {
         return .useGlobal
     }
 
+    /// 表单值转回真正存储到模型中的 `PreferredOpenMode?`。
+    /// 其中 `useDefault` 被编码成 `nil`，表示“不要写主机级覆盖值”。
     private func preferredOpenMode(from selection: OpenModeSelection) -> PreferredOpenMode? {
         switch selection {
         case .useDefault:
@@ -320,6 +350,7 @@ struct HostEditorView: View {
         }
     }
 
+    /// 与 `preferredOpenMode(from:)` 反向对应，用于编辑已有值时的回填。
     private static func selection(for mode: PreferredOpenMode?) -> OpenModeSelection {
         switch mode {
         case nil:

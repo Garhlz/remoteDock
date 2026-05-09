@@ -1,10 +1,18 @@
 import SwiftUI
 import RemoteDockCore
 
+/// 菜单栏入口中的主机列表和快捷操作菜单。
+///
+/// 这是主窗口的一份“轻量镜像”：
+/// 它复用了同一份配置文件、同一批系统服务和同一套状态概念，
+/// 但 UI 更偏向快速操作，而不是完整管理。
 struct MenuBarHostsView: View {
+    /// 菜单栏需要知道全局默认打开方式，这样没有主机级覆盖时也能正确决定主动作。
     @AppStorage(AppSettings.defaultOpenModeKey) private var defaultOpenModeRawValue = AppSettings.defaultOpenMode.rawValue
     @Environment(\.openWindow) private var openWindow
 
+    /// 这些状态是菜单栏自己的局部快照，不直接和主窗口共享内存。
+    /// 每次展开时它会从配置文件重新加载，保证信息尽量新鲜。
     @State private var hosts: [RemoteHost] = []
     @State private var groups: [HostGroup] = []
     @State private var statuses: [UUID: HostStatus] = [:]
@@ -14,6 +22,7 @@ struct MenuBarHostsView: View {
     @State private var isPingingAll = false
 
     var body: some View {
+        /// `MenuBarExtra` 的内容最终会被渲染成菜单项，因此这里用一串顺序化的按钮和 section 组织。
         Group {
             Button("Show Main Window") {
                 showMainWindow()
@@ -63,6 +72,7 @@ struct MenuBarHostsView: View {
         }
     }
 
+    /// 每次展开菜单栏时都可重载配置，确保不必依赖主窗口也能拿到最新 host 列表。
     private func loadHosts() {
         do {
             let configuration = try HostStore.loadOrCreateConfiguration()
@@ -76,6 +86,7 @@ struct MenuBarHostsView: View {
         }
     }
 
+    /// 优先激活已有主窗口；只有窗口不存在时才请求 SwiftUI 新开一个。
     private func showMainWindow() {
         NSApp.activate(ignoringOtherApps: true)
 
@@ -88,6 +99,7 @@ struct MenuBarHostsView: View {
         openWindow(id: "main")
     }
 
+    /// 尝试找出当前最像“主窗口”的现有 NSWindow，避免重复打开多个主界面窗口。
     private func existingMainWindow() -> NSWindow? {
         let candidateWindows = NSApp.orderedWindows.filter {
             $0.isVisible &&
@@ -120,6 +132,7 @@ struct MenuBarHostsView: View {
     }
 
     private var statusSummary: some View {
+        /// 菜单栏空间有限，所以摘要只保留最有判断价值的三个计数。
         VStack(alignment: .leading, spacing: 4) {
             Text("\(hosts.count) hosts")
                 .font(.subheadline.weight(.semibold))
@@ -131,6 +144,7 @@ struct MenuBarHostsView: View {
         .padding(.vertical, 2)
     }
 
+    /// 菜单栏里的主机分组逻辑与 sidebar 保持一致，保证用户在两个入口看到相同结构。
     private var hostGroups: [HostMenuSection] {
         var sections: [HostMenuSection] = groups.compactMap { group in
             let sectionHosts = hosts.filter { $0.groupID == group.id }
@@ -158,6 +172,8 @@ struct MenuBarHostsView: View {
     }
 
     @ViewBuilder
+    /// 每台主机对应一个子菜单：
+    /// 顶部是状态摘要，中间是动作，底部是复制类辅助操作。
     private func hostMenu(for host: RemoteHost) -> some View {
         Menu {
             Text(statusLine(for: host))
@@ -210,9 +226,11 @@ struct MenuBarHostsView: View {
     }
 
     private func effectiveOpenMode(for host: RemoteHost) -> PreferredOpenMode {
+        /// 生效逻辑与主窗口保持一致：先看主机级覆盖，再回退到全局默认值。
         host.preferredOpenModeOrNil ?? (PreferredOpenMode(rawValue: defaultOpenModeRawValue) ?? AppSettings.defaultOpenMode)
     }
 
+    /// 菜单栏也复用与主窗口相同的“按首选方式打开”决策逻辑。
     private func openPreferred(for host: RemoteHost) {
         switch effectiveOpenMode(for: host) {
         case .ghostty:
@@ -230,6 +248,8 @@ struct MenuBarHostsView: View {
         }
     }
 
+    /// 单主机 ping 在菜单栏里用 fire-and-forget 方式触发，
+    /// 完成后回到主线程更新局部状态。
     private func ping(_ host: RemoteHost) {
         statuses[host.id] = .checking
 
@@ -243,6 +263,7 @@ struct MenuBarHostsView: View {
         }
     }
 
+    /// 全量 ping 也采用并发任务组，避免主机数量一多就让菜单栏操作显得很慢。
     private func pingAll() {
         guard !isPingingAll else {
             return
@@ -278,6 +299,7 @@ struct MenuBarHostsView: View {
     }
 
     private func statusLine(for host: RemoteHost) -> String {
+        /// 菜单栏顶部状态行使用短句式文案，避免在狭窄菜单里占用过多空间。
         switch status(for: host) {
         case .unknown:
             "Status: Not checked"
@@ -295,6 +317,8 @@ struct MenuBarHostsView: View {
             return nil
         }
 
+        /// 菜单栏里沿用主窗口同样的格式化策略：
+        /// 大于等于 100ms 用整数，小于 100ms 保留 1 位小数。
         if value >= 100 {
             return String(format: "%.0f ms", value)
         }
@@ -303,9 +327,11 @@ struct MenuBarHostsView: View {
     }
 }
 
+/// 用于菜单栏分组展示的轻量 section 模型。
 private struct HostMenuSection: Identifiable {
     let title: String
     let hosts: [RemoteHost]
 
+    /// 菜单 section 用标题作为身份标识已经足够，因为这里的标题来自稳定的分组名或 `Ungrouped`。
     var id: String { title }
 }

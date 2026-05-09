@@ -76,7 +76,7 @@
 
 ## 第四优先级：架构、安全与测试
 
-当前 `RemoteDockCore` 已有 `61` 个测试，覆盖 `6` 个 suite。
+当前 `RemoteDockCore` 已有 `63` 个测试，覆盖 `6` 个 suite。
 
 - [x] 修正 `Ping All` 的进行中状态判断，避免首个主机返回后按钮重新可点，导致重复并发检测。
 - [x] 把纯 Swift 逻辑抽成 `RemoteDockCore` Swift Package。

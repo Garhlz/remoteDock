@@ -2,7 +2,12 @@ import Foundation
 import Testing
 @testable import RemoteDockCore
 
+/// 覆盖 SSH 命令拼接与 follow-up 行为的测试集合。
+///
+/// 这些测试主要保护“命令字符串生成”这个高风险区域：
+/// 一旦转义、follow-up 或平台分支出错，用户点击打开后就会直接失败。
 struct SSHCommandBuilderTests {
+    /// 没有目录、没有自定义命令时，应退化成最普通的 ssh 命令。
     @Test
     func linuxHostWithoutFollowUpUsesPlainSSHCommand() {
         let host = RemoteHost(
@@ -16,6 +21,7 @@ struct SSHCommandBuilderTests {
         #expect(command == "TERM=xterm-256color /usr/bin/ssh elaine@100.117.140.113")
     }
 
+    /// 只要配置了端口，就必须准确落到命令行参数里。
     @Test
     func customPortIsIncludedInSSHCommand() {
         let host = RemoteHost(
@@ -30,6 +36,7 @@ struct SSHCommandBuilderTests {
         #expect(command == "TERM=xterm-256color /usr/bin/ssh -p 2222 elaine@100.117.140.113")
     }
 
+    /// Unix 主机有目录时，会生成 `cd && exec shell` 形式的 follow-up。
     @Test
     func linuxRemoteDirectoryProducesFollowUpCommand() {
         let host = RemoteHost(
@@ -46,6 +53,7 @@ struct SSHCommandBuilderTests {
         #expect(command.hasPrefix("TERM=xterm-256color /usr/bin/ssh -t elaine@100.117.140.113 "))
     }
 
+    /// 占位符替换要以最终有效目录为准。
     @Test
     func startupCommandUsesResolvedRemoteDirectory() {
         let host = RemoteHost(
@@ -61,6 +69,7 @@ struct SSHCommandBuilderTests {
         #expect(remoteCommand == "cd -- /srv/project && exec zsh -l")
     }
 
+    /// 单引号转义是 shell 拼接里最容易出错的点之一。
     @Test
     func singleQuotesAreEscapedInFollowUpCommand() {
         let host = RemoteHost(
@@ -75,6 +84,7 @@ struct SSHCommandBuilderTests {
         #expect(remoteCommand == #"cd -- '/Users/elaine/it'"'"'s-here' && exec "${SHELL:-/bin/sh}" -l"#)
     }
 
+    /// Windows 主机的默认 follow-up 走 PowerShell fallback 逻辑。
     @Test
     func windowsHostWithoutStartupCommandUsesWrapperFallback() {
         let host = RemoteHost(

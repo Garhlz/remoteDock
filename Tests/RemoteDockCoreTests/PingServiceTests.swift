@@ -3,7 +3,14 @@ import Testing
 @testable import RemoteDockCore
 
 @Suite(.serialized)
+/// 覆盖 Ping 重试、结果解析和依赖注入的测试集合。
+///
+/// 由于真实 ping 会依赖网络环境，这个 suite 主要通过注入假 runner 来验证：
+/// - 重试次数是否正确
+/// - 成功后是否会提前返回
+/// - 文本解析逻辑是否稳定
 struct PingServiceTests {
+    /// 最基本的成功路径：runner 返回 reachable 时，简化接口应返回 true。
     @Test
     func checkReturnsTrueWhenRunnerSucceeds() async {
         defer { PingService.resetDependencies() }
@@ -21,6 +28,7 @@ struct PingServiceTests {
         #expect(result)
     }
 
+    /// 连续失败时，应保持 false。
     @Test
     func checkReturnsFalseForNonResponsiveHost() async {
         defer { PingService.resetDependencies() }
@@ -34,6 +42,7 @@ struct PingServiceTests {
         #expect(result == false)
     }
 
+    /// 确认外部传入的地址确实会传给底层 runner，而不是被改写。
     @Test
     func checkPassesAddressToInjectedRunner() async {
         defer { PingService.resetDependencies() }
@@ -49,6 +58,7 @@ struct PingServiceTests {
         #expect(receivedAddress == "server.example.com")
     }
 
+    /// 如果始终失败，应重试到默认次数上限。
     @Test
     func checkRetriesBeforeReturningOffline() async {
         defer { PingService.resetDependencies() }
@@ -65,6 +75,7 @@ struct PingServiceTests {
         #expect(callCount == PingService.defaultAttemptCount)
     }
 
+    /// 如果中途某次成功，应该立即停止后续重试。
     @Test
     func checkReturnsTrueWhenLaterRetrySucceeds() async {
         defer { PingService.resetDependencies() }
@@ -85,6 +96,7 @@ struct PingServiceTests {
         #expect(callCount == 2)
     }
 
+    /// 完整结果接口除了可达性，还要保留延迟和丢包信息。
     @Test
     func checkResultReturnsLatencyWhenPingSucceeds() async {
         defer { PingService.resetDependencies() }
@@ -100,6 +112,7 @@ struct PingServiceTests {
         #expect(result.packetLossPercentage == 0)
     }
 
+    /// 这两项测试保护正则解析逻辑，避免系统 ping 输出格式解析回归。
     @Test
     func parseAverageLatencyMillisecondsExtractsAverageValue() {
         let output = """

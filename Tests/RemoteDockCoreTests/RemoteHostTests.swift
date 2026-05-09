@@ -2,7 +2,13 @@ import Foundation
 import Testing
 @testable import RemoteDockCore
 
+/// 覆盖主机模型推导逻辑与字段归一化行为的测试集合。
+///
+/// 这个 suite 本质上是在保护 `RemoteHost` 的“规则引擎”：
+/// 给定一组输入字段后，它应该如何推导目录、命令、端口、Tailscale 识别、
+/// 自动 ping 策略，以及复制命名规则。
 struct RemoteHostTests {
+    /// Linux 风格名称应推导到 `/home/<user>`。
     @Test
     func linuxHostUsesHomeDirectoryByDefault() {
         let host = RemoteHost(
@@ -17,6 +23,7 @@ struct RemoteHostTests {
         #expect(host.isWindowsHost == false)
     }
 
+    /// mac 风格名称应推导到 `/Users/<user>`。
     @Test
     func macHostUsesUsersDirectoryByDefault() {
         let host = RemoteHost(
@@ -28,6 +35,7 @@ struct RemoteHostTests {
         #expect(host.suggestedRemoteDirectory == "/Users/elaine")
     }
 
+    /// Windows 风格名称不仅会推导目录，还会建议默认 startup command。
     @Test
     func windowsHostUsesWindowsDirectoryAndWrapperSuggestion() {
         let host = RemoteHost(
@@ -41,6 +49,7 @@ struct RemoteHostTests {
         #expect(host.suggestedStartupCommand == #"call "%USERPROFILE%\bin\remote.cmd" "{remoteDirectory}""#)
     }
 
+    /// 只要路径像 Windows，也会把整台主机识别成 Windows 主机。
     @Test
     func windowsPathMarksHostAsWindows() {
         let host = RemoteHost(
@@ -54,6 +63,7 @@ struct RemoteHostTests {
         #expect(host.effectiveRemoteDirectory == "C:/Users/elaine")
     }
 
+    /// 下面几组测试保护的是各种地址推断与 SSH 字段拼装逻辑。
     @Test
     func tailscaleIPv4AddressIsRecognized() {
         let host = RemoteHost(

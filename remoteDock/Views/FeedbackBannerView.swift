@@ -1,10 +1,16 @@
 import SwiftUI
 
+/// 顶部自动消失的反馈横幅视图。
+///
+/// 这是整个应用统一的轻量反馈组件。
+/// 上层只需要提供 `FeedbackMessage` 和关闭动作，
+/// 它就会根据成功/失败自动切换图标、颜色和标题。
 struct FeedbackBannerView: View {
     let feedback: FeedbackMessage
     let dismiss: () -> Void
 
     var body: some View {
+        /// 成功和失败都走同一套布局，只通过 `feedback.kind` 切换视觉语义。
         HStack(spacing: 12) {
             Image(systemName: feedback.kind.systemImage)
                 .font(.headline)

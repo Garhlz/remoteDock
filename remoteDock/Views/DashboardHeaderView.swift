@@ -1,5 +1,10 @@
 import SwiftUI
 
+/// 主窗口顶部的统计与全局操作区域。
+///
+/// 这里承担两个作用：
+/// 1. 给用户一个“总览仪表盘”，快速理解当前配置规模和状态；
+/// 2. 放置最高频的全局动作入口，例如新增主机、打开设置、批量 Ping。
 struct DashboardHeaderView: View {
     let hostCount: Int
     let onlineCount: Int
@@ -10,6 +15,7 @@ struct DashboardHeaderView: View {
     let pingAll: () -> Void
 
     var body: some View {
+        /// 左边是应用标题，右边是指标和全局按钮。
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("RemoteDock")
@@ -55,6 +61,7 @@ struct DashboardHeaderView: View {
     }
 }
 
+/// 仪表盘中的单个指标块，例如 Hosts / Online / Unchecked。
 private struct DashboardMetricView: View {
     let title: String
     let value: String

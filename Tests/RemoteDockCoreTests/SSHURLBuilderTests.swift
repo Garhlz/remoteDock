@@ -2,6 +2,10 @@ import Foundation
 import Testing
 @testable import RemoteDockCore
 
+/// 覆盖默认终端 `ssh://` URL 生成的测试集合。
+///
+/// 这个 suite 很小，但很重要，因为 `ssh://` URL 一旦拼错，
+/// `DefaultTerminalService` 就无法把请求正确交给系统默认终端。
 struct SSHURLBuilderTests {
     @Test
     func urlWithoutPortUsesDefaultAuthority() {
